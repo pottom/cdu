@@ -14,7 +14,6 @@ import (
 const (
 	sizeColWidth = 10
 	pctColWidth  = 5
-	iconColWidth = 2
 
 	// Below these widths the layout sheds its least essential column rather
 	// than wrapping or smearing.
@@ -157,34 +156,42 @@ func (m *model) viewList() string {
 	return padLines(strings.TrimRight(b.String(), "\n"), visible)
 }
 
+// viewRow builds the row as plain text at an exact width first, and only then
+// applies styles. Never truncate or measure an already-styled string: escape
+// sequences are invisible on screen but very much visible to a rune counter, and
+// a styled row cut with runewidth loses most of its columns.
 func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	size := m.itemSize(item)
 
 	icon := ""
 	if m.width >= minWidthForIcon {
 		switch {
-		case m.ui.noUnicode && item.IsDir():
-			icon = "> "
 		case m.ui.noUnicode:
 			icon = "  "
+			if item.IsDir() {
+				icon = "> "
+			}
 		case item.IsDir():
-			icon = m.st.accent.Render("▸") + " "
+			icon = "▸ "
 		default:
-			icon = m.st.dim.Render("·") + " "
+			icon = "· "
 		}
 	}
 
-	sizeCell := m.st.size.Render(padLeft(m.ui.formatSize(size), sizeColWidth))
+	sizeText := padLeft(m.ui.formatSize(size), sizeColWidth)
 
-	pct := ""
+	pctText := ""
 	if m.width >= minWidthForPct {
-		pct = m.st.pct.Render(padLeft(formatPct(size, total), pctColWidth))
+		pctText = padLeft(runewidth.Truncate(formatPct(size, total), pctColWidth, ""), pctColWidth)
 	}
 
-	nameWidth := m.width - iconWidthFor(m.width) - sizeColWidth - lipgloss.Width(pct) - 3
-	if nameWidth < minNameWidth {
-		nameWidth = minNameWidth
-	}
+	// The row is: gutter(1) + icon + size + gap(1) + name + pct. The gutter holds
+	// either the selection marker or a blank, so both variants are the same width.
+	const fixedCells = 2 // gutter + the gap between size and name
+	nameWidth := max(
+		m.width-runewidth.StringWidth(icon)-sizeColWidth-runewidth.StringWidth(pctText)-fixedCells,
+		minNameWidth,
+	)
 
 	name := item.GetName()
 	if item.IsDir() {
@@ -192,44 +199,46 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	}
 	// Flags carry meaning that must survive mono, NO_COLOR and colourblindness,
 	// so they are a glyph, not a colour.
-	if f := item.GetFlag(); f == '!' {
+	switch item.GetFlag() {
+	case '!':
 		name += " !"
-	} else if f == 'H' {
+	case 'H':
 		name += " ⇉"
 	}
-	nameCell := runewidth.Truncate(name, nameWidth, "…")
-	nameCell = runewidth.FillRight(nameCell, nameWidth)
+	nameText := runewidth.FillRight(runewidth.Truncate(name, nameWidth, "…"), nameWidth)
 
-	if item.IsDir() {
-		nameCell = m.st.dirName.Render(nameCell)
-	} else {
-		nameCell = m.st.fileName.Render(nameCell)
-	}
+	plain := icon + sizeText + " " + nameText + pctText
 
-	row := icon + sizeCell + " " + nameCell + pct
 	if selected {
 		// No box-shadow in a terminal: the mock's glow becomes a filled
-		// background plus a bright marker, and the marker is what survives
-		// --no-color.
-		marker := m.st.accent.Render("▌")
-		return marker + m.st.selected.Render(runewidth.Truncate(
-			stripTrailing(row), max(m.width-1, 1), "",
-		))
+		// background plus a bold name and a bright marker. The marker is what
+		// survives --no-color, NO_COLOR and the mono theme.
+		return m.st.accent.Render("▌") +
+			m.st.selected.MaxWidth(max(m.width-1, 1)).Render(plain)
 	}
-	return " " + row
+
+	nameStyle := m.st.fileName
+	iconStyle := m.st.dim
+	if item.IsDir() {
+		nameStyle = m.st.dirName
+		iconStyle = m.st.accent
+	}
+	return " " + iconStyle.Render(icon) +
+		m.st.size.Render(sizeText) + " " +
+		nameStyle.Render(nameText) +
+		m.st.pct.Render(pctText)
 }
 
 func (m *model) viewFooter() string {
-	keys := []string{"↑↓ move", "→ open", "← back", "q quit"}
-	left := m.st.dim.Render(strings.Join(keys, "  "))
+	keys := strings.Join([]string{"↑↓ move", "→ open", "← back", "q quit"}, "  ")
+	sort := "sorted by size · desc"
 
-	right := m.st.dim.Render("sorted by size · desc")
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	gap := m.width - runewidth.StringWidth(keys) - runewidth.StringWidth(sort)
 	if gap < 1 {
 		// Too narrow for both: the sort state is the more droppable of the two.
-		return runewidth.Truncate(left, max(m.width, 1), "")
+		return m.st.dim.Render(runewidth.Truncate(keys, max(m.width, 1), ""))
 	}
-	return left + strings.Repeat(" ", gap) + right
+	return m.st.dim.Render(keys + strings.Repeat(" ", gap) + sort)
 }
 
 // itemSize honours --apparent-size, which is a display choice: the engine

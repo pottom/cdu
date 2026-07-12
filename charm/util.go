@@ -9,15 +9,6 @@ import (
 	"github.com/pottom/cdu/internal/common"
 )
 
-// iconWidthFor reports how much room the icon column takes at a given width.
-// Below the icon breakpoint it takes none.
-func iconWidthFor(width int) int {
-	if width >= minWidthForIcon {
-		return iconColWidth
-	}
-	return 0
-}
-
 func padLeft(s string, width int) string {
 	if runewidth.StringWidth(s) >= width {
 		return s
@@ -64,12 +55,6 @@ func middleTruncate(s string, width int) string {
 		right = candidate
 	}
 	return left + "…" + right
-}
-
-// stripTrailing removes trailing spaces, so a selected row's background fill
-// stops where the content does rather than being padded twice.
-func stripTrailing(s string) string {
-	return strings.TrimRight(s, " ")
 }
 
 func formatPct(size, total int64) string {
