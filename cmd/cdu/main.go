@@ -80,6 +80,7 @@ func init() {
 	flags.BoolVarP(&af.NoColor, "no-color", "c", false, "Do not use colorized output")
 	flags.BoolVarP(&af.ShowItemCount, "show-item-count", "C", false, "Show number of items in directory")
 	flags.BoolVarP(&af.ShowMTime, "show-mtime", "M", false, "Show latest mtime of items in directory")
+	flags.BoolVar(&af.Classic, "classic", false, "Use gdu's original interface instead of the Charm one")
 	flags.BoolVarP(&af.NonInteractive, "non-interactive", "n", false, "Do not run in interactive mode")
 	flags.BoolVar(&af.Interactive, "interactive", false, "Force interactive mode even when output is not a TTY")
 	flags.BoolVarP(&af.NoProgress, "no-progress", "p", false, "Do not show progress in non-interactive mode")
@@ -227,7 +228,10 @@ func runE(command *cobra.Command, args []string) error {
 		af.ShowApparentSize = true
 	}
 
-	if !af.ShouldRunInNonInteractiveMode(istty) {
+	// Only the classic interface gets a tcell screen. The Charm interface runs its
+	// own Bubble Tea loop, and a second reader attached to the same terminal would
+	// race it for input — each of them swallowing every other keystroke.
+	if !af.ShouldRunInNonInteractiveMode(istty) && af.Classic {
 		screen, err = tcell.NewScreen()
 		if err != nil {
 			return fmt.Errorf("error creating screen: %w", err)

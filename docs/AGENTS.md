@@ -26,6 +26,9 @@ upstream-owned — leave them alone.
   - `adr-001-upstream-sync-strategy.md` — the core/UI boundary, why gdu cannot be
     consumed as a module, and the three-branch fork model. Read this before
     touching anything that crosses the upstream boundary.
+- `terminal-translation.md` — every part of the design a terminal genuinely cannot
+  do, and what was built instead. Append to it as each slice lands; it is a
+  deliverable of the brief, not a scratch file.
 
 ## Local Contracts
 

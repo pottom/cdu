@@ -1,0 +1,251 @@
+package charm
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
+
+	"github.com/pottom/cdu/pkg/fs"
+)
+
+// Layout constants. Everything else is derived from the live terminal size.
+const (
+	sizeColWidth = 10
+	pctColWidth  = 5
+
+	// Below these widths the layout sheds its least essential column rather
+	// than wrapping or smearing.
+	minWidthForPct  = 70
+	minWidthForIcon = 44
+
+	// Below this height the header and footer are dropped so the list still has
+	// somewhere to live. Smaller than this and we clamp rather than crash.
+	minHeightForChrome = 5
+
+	minNameWidth = 4
+)
+
+func (m *model) headerHeight() int {
+	if m.height < minHeightForChrome {
+		return 0
+	}
+	return 2 // wordmark + breadcrumb line, then a rule
+}
+
+func (m *model) footerHeight() int {
+	if m.height < minHeightForChrome {
+		return 0
+	}
+	return 1
+}
+
+// visibleRows is the number of list rows that fit right now. It is always at
+// least one, so a degenerate terminal clamps to a minimal layout instead of
+// producing a negative height.
+func (m *model) visibleRows() int {
+	n := m.height - m.headerHeight() - m.footerHeight()
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
+func (m *model) View() string {
+	// Bubble Tea sends WindowSizeMsg on startup; until it lands we have no
+	// honest size to lay out against.
+	if !m.haveSize {
+		return ""
+	}
+
+	switch m.scr {
+	case screenError:
+		return m.st.danger.Render("error: ") + m.err.Error() + "\n"
+	case screenScanning:
+		return m.viewScanning()
+	case screenBrowse:
+		return m.viewBrowse()
+	}
+	return ""
+}
+
+func (m *model) viewScanning() string {
+	progress := fmt.Sprintf(
+		"walking directories · %s items · %s",
+		humanCount(m.progress.ItemCount),
+		m.ui.formatSize(m.progress.TotalUsage),
+	)
+
+	name := m.progress.CurrentItemName
+	if name != "" {
+		avail := m.width - 4
+		if avail > minNameWidth {
+			name = m.st.dim.Render(middleTruncate(name, avail))
+		} else {
+			name = ""
+		}
+	}
+
+	body := m.spinner.View() + " " + m.st.accent.Render(progress)
+	if name != "" {
+		body += "\n" + name
+	}
+	return body + "\n"
+}
+
+func (m *model) viewBrowse() string {
+	var b strings.Builder
+
+	if m.headerHeight() > 0 {
+		b.WriteString(m.viewHeader())
+		b.WriteByte('\n')
+	}
+
+	b.WriteString(m.viewList())
+
+	if m.footerHeight() > 0 {
+		b.WriteString(m.viewFooter())
+	}
+	return b.String()
+}
+
+func (m *model) viewHeader() string {
+	wordmark := m.st.accent.Render("cdu ✦")
+
+	path := ""
+	if m.currentDir != nil {
+		path = m.currentDir.GetPath()
+	}
+
+	// The breadcrumb gets whatever the wordmark leaves behind, and is
+	// middle-truncated so both the root and the leaf stay readable.
+	avail := m.width - lipgloss.Width(wordmark) - 5
+	line := wordmark
+	if avail > minNameWidth {
+		line += "  " + m.st.dim.Render("at ") + m.st.size.Render(middleTruncate(path, avail))
+	}
+
+	rule := m.st.dim.Render(strings.Repeat("─", max(m.width, 1)))
+	return line + "\n" + rule
+}
+
+func (m *model) viewList() string {
+	visible := m.visibleRows()
+
+	if len(m.rows) == 0 {
+		return padLines(m.st.dim.Render("  (empty)"), visible)
+	}
+
+	// The window, and only the window, is rendered. A directory can hold tens of
+	// thousands of entries; building a string for all of them every frame is the
+	// cost this whole design exists to avoid.
+	end := min(m.offset+visible, len(m.rows))
+
+	// The percentage is the entry's share of the parent directory total.
+	total := int64(0)
+	if m.currentDir != nil {
+		total = m.itemSize(m.currentDir)
+	}
+
+	var b strings.Builder
+	for i := m.offset; i < end; i++ {
+		b.WriteString(m.viewRow(m.rows[i], i == m.cursor, total))
+		b.WriteByte('\n')
+	}
+	return padLines(strings.TrimRight(b.String(), "\n"), visible)
+}
+
+// viewRow builds the row as plain text at an exact width first, and only then
+// applies styles. Never truncate or measure an already-styled string: escape
+// sequences are invisible on screen but very much visible to a rune counter, and
+// a styled row cut with runewidth loses most of its columns.
+func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
+	size := m.itemSize(item)
+
+	icon := ""
+	if m.width >= minWidthForIcon {
+		switch {
+		case m.ui.noUnicode:
+			icon = "  "
+			if item.IsDir() {
+				icon = "> "
+			}
+		case item.IsDir():
+			icon = "▸ "
+		default:
+			icon = "· "
+		}
+	}
+
+	sizeText := padLeft(m.ui.formatSize(size), sizeColWidth)
+
+	pctText := ""
+	if m.width >= minWidthForPct {
+		pctText = padLeft(runewidth.Truncate(formatPct(size, total), pctColWidth, ""), pctColWidth)
+	}
+
+	// The row is: gutter(1) + icon + size + gap(1) + name + pct. The gutter holds
+	// either the selection marker or a blank, so both variants are the same width.
+	const fixedCells = 2 // gutter + the gap between size and name
+	nameWidth := max(
+		m.width-runewidth.StringWidth(icon)-sizeColWidth-runewidth.StringWidth(pctText)-fixedCells,
+		minNameWidth,
+	)
+
+	name := item.GetName()
+	if item.IsDir() {
+		name += "/"
+	}
+	// Flags carry meaning that must survive mono, NO_COLOR and colourblindness,
+	// so they are a glyph, not a colour.
+	switch item.GetFlag() {
+	case '!':
+		name += " !"
+	case 'H':
+		name += " ⇉"
+	}
+	nameText := runewidth.FillRight(runewidth.Truncate(name, nameWidth, "…"), nameWidth)
+
+	plain := icon + sizeText + " " + nameText + pctText
+
+	if selected {
+		// No box-shadow in a terminal: the mock's glow becomes a filled
+		// background plus a bold name and a bright marker. The marker is what
+		// survives --no-color, NO_COLOR and the mono theme.
+		return m.st.accent.Render("▌") +
+			m.st.selected.MaxWidth(max(m.width-1, 1)).Render(plain)
+	}
+
+	nameStyle := m.st.fileName
+	iconStyle := m.st.dim
+	if item.IsDir() {
+		nameStyle = m.st.dirName
+		iconStyle = m.st.accent
+	}
+	return " " + iconStyle.Render(icon) +
+		m.st.size.Render(sizeText) + " " +
+		nameStyle.Render(nameText) +
+		m.st.pct.Render(pctText)
+}
+
+func (m *model) viewFooter() string {
+	keys := strings.Join([]string{"↑↓ move", "→ open", "← back", "q quit"}, "  ")
+	sort := "sorted by size · desc"
+
+	gap := m.width - runewidth.StringWidth(keys) - runewidth.StringWidth(sort)
+	if gap < 1 {
+		// Too narrow for both: the sort state is the more droppable of the two.
+		return m.st.dim.Render(runewidth.Truncate(keys, max(m.width, 1), ""))
+	}
+	return m.st.dim.Render(keys + strings.Repeat(" ", gap) + sort)
+}
+
+// itemSize honours --apparent-size, which is a display choice: the engine
+// always carries both figures on every item.
+func (m *model) itemSize(item fs.Item) int64 {
+	if m.ui.ShowApparentSize {
+		return item.GetSize()
+	}
+	return item.GetUsage()
+}
