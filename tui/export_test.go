@@ -5,11 +5,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dundee/gdu/v5/internal/testanalyze"
-	"github.com/dundee/gdu/v5/internal/testapp"
-	"github.com/dundee/gdu/v5/pkg/analyze"
-	"github.com/dundee/gdu/v5/pkg/fs"
 	"github.com/gdamore/tcell/v2"
+	"github.com/pottom/cdu/internal/testanalyze"
+	"github.com/pottom/cdu/internal/testapp"
+	"github.com/pottom/cdu/pkg/analyze"
+	"github.com/pottom/cdu/pkg/fs"
 	"github.com/rivo/tview"
 	"github.com/stretchr/testify/assert"
 )

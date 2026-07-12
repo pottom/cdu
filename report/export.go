@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dundee/gdu/v5/build"
-	"github.com/dundee/gdu/v5/internal/common"
-	"github.com/dundee/gdu/v5/pkg/analyze"
-	"github.com/dundee/gdu/v5/pkg/device"
-	"github.com/dundee/gdu/v5/pkg/fs"
 	"github.com/fatih/color"
+	"github.com/pottom/cdu/build"
+	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/pkg/analyze"
+	"github.com/pottom/cdu/pkg/device"
+	"github.com/pottom/cdu/pkg/fs"
 )
 
 // UI struct

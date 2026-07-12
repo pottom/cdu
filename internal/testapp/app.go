@@ -4,8 +4,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/dundee/gdu/v5/internal/common"
 	"github.com/gdamore/tcell/v2"
+	"github.com/pottom/cdu/internal/common"
 	"github.com/rivo/tview"
 )
 

@@ -15,8 +15,8 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/dundee/gdu/v5/cmd/gdu/app"
-	"github.com/dundee/gdu/v5/pkg/device"
+	"github.com/pottom/cdu/cmd/cdu/app"
+	"github.com/pottom/cdu/pkg/device"
 )
 
 var (

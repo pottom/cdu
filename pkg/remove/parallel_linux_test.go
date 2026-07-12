@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dundee/gdu/v5/internal/testdir"
-	"github.com/dundee/gdu/v5/pkg/analyze"
-	"github.com/dundee/gdu/v5/pkg/fs"
+	"github.com/pottom/cdu/internal/testdir"
+	"github.com/pottom/cdu/pkg/analyze"
+	"github.com/pottom/cdu/pkg/fs"
 	"github.com/stretchr/testify/assert"
 )
 

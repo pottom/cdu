@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dundee/gdu/v5/internal/common"
+	"github.com/pottom/cdu/internal/common"
 )
 
 // BaseAnalyzer provides common logic for all analyzers

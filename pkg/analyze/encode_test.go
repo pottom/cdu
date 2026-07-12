@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dundee/gdu/v5/pkg/fs"
+	"github.com/pottom/cdu/pkg/fs"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )

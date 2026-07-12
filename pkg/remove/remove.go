@@ -3,8 +3,8 @@ package remove
 import (
 	"os"
 
-	"github.com/dundee/gdu/v5/pkg/analyze"
-	"github.com/dundee/gdu/v5/pkg/fs"
+	"github.com/pottom/cdu/pkg/analyze"
+	"github.com/pottom/cdu/pkg/fs"
 )
 
 // ItemFromDir removes item from dir

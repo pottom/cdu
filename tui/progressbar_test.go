@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dundee/gdu/v5/internal/testapp"
+	"github.com/pottom/cdu/internal/testapp"
 	"github.com/stretchr/testify/assert"
 )
 

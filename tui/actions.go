@@ -18,11 +18,11 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/dundee/gdu/v5/build"
-	"github.com/dundee/gdu/v5/pkg/analyze"
-	"github.com/dundee/gdu/v5/pkg/device"
-	"github.com/dundee/gdu/v5/pkg/fs"
-	"github.com/dundee/gdu/v5/report"
+	"github.com/pottom/cdu/build"
+	"github.com/pottom/cdu/pkg/analyze"
+	"github.com/pottom/cdu/pkg/device"
+	"github.com/pottom/cdu/pkg/fs"
+	"github.com/pottom/cdu/report"
 )
 
 const (

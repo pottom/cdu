@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dundee/gdu/v5/internal/common"
+	"github.com/pottom/cdu/internal/common"
 	"github.com/stretchr/testify/assert"
 )
 

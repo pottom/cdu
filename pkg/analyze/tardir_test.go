@@ -12,7 +12,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/dundee/gdu/v5/pkg/fs"
+	"github.com/pottom/cdu/pkg/fs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/ulikunitz/xz"

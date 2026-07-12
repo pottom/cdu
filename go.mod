@@ -1,4 +1,4 @@
-module github.com/dundee/gdu/v5
+module github.com/pottom/cdu
 
 go 1.25.0
 

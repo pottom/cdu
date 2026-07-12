@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dundee/gdu/v5/internal/testdev"
-	"github.com/dundee/gdu/v5/internal/testdir"
-	"github.com/dundee/gdu/v5/pkg/device"
+	"github.com/pottom/cdu/internal/testdev"
+	"github.com/pottom/cdu/internal/testdir"
+	"github.com/pottom/cdu/pkg/device"
 	"github.com/stretchr/testify/assert"
 )
 

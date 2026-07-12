@@ -9,8 +9,8 @@ import (
 	"github.com/rivo/tview"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/dundee/gdu/v5/build"
-	"github.com/dundee/gdu/v5/pkg/fs"
+	"github.com/pottom/cdu/build"
+	"github.com/pottom/cdu/pkg/fs"
 )
 
 var (

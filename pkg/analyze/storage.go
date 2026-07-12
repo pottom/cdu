@@ -7,9 +7,9 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/dundee/gdu/v5/internal/common"
-	"github.com/dundee/gdu/v5/pkg/fs"
 	"github.com/pkg/errors"
+	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/pkg/fs"
 )
 
 func init() {
