@@ -119,8 +119,12 @@ it only in a sync PR.
 **Conflict surface — edit deliberately, expect merge conflicts.** These are
 upstream files we must modify, and they are the only ones:
 
-    go.mod  go.sum  cmd/cdu/main.go  cmd/cdu/app/app.go
+    go.mod  go.sum  cmd/cdu/main.go  cmd/cdu/app/app.go  cmd/cdu/app/app_test.go
     Makefile  .github/workflows/*  README.md  cdu.1.md
+
+`app_test.go` is on the list because cdu changes the interactive default: gdu's
+"Gui" tests inject a mocked tview application, so `runApp` sets `Classic: true` to
+keep testing what they were written to test.
 
 Adding a file to a *new* directory is always safe. Editing an upstream file is a
 cost — justify it, and keep the diff minimal and localized.
@@ -180,9 +184,10 @@ on the same tree; the bytes must match.
 
 ## Child DOX Index
 
+- `charm/AGENTS.md` — the default Bubble Tea interface.
 - `docs/AGENTS.md` — the brief, design mocks, and architecture/decision records.
 - `scripts/AGENTS.md` — the upstream rename and sync tooling.
 
-Directories from the Ownership section that do not exist yet (`charm/`,
-`internal/theme/`, `internal/trash/`, `internal/selfupdate/`) get their own child
-doc in the PR that creates them.
+Directories from the Ownership section that do not exist yet (`internal/theme/`,
+`internal/trash/`, `internal/selfupdate/`) get their own child doc in the PR that
+creates them.

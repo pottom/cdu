@@ -676,6 +676,12 @@ func TestSetTimeFiltersSetsFilter(t *testing.T) {
 
 // nolint: unparam // Why: it's used in linux tests
 func runApp(flags *Flags, args []string, istty bool, getter device.DevicesInfoGetter) (output string, err error) {
+	// These tests inject a mocked tview application, so they are exercising the
+	// classic interface. cdu's interactive default is the Charm UI, which would
+	// reach for a real TTY here. The non-interactive and export paths ignore this
+	// flag, so it is safe for every caller.
+	flags.Classic = true
+
 	buff := bytes.NewBufferString("")
 
 	app := App{

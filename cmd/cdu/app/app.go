@@ -17,6 +17,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/pottom/cdu/build"
+	"github.com/pottom/cdu/charm"
 	"github.com/pottom/cdu/internal/common"
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/device"
@@ -103,6 +104,7 @@ type Flags struct {
 	ArchiveBrowsing    bool     `yaml:"archive-browsing"`
 	CollapsePath       bool     `yaml:"collapse-path"`
 	BrowseParentDirs   bool     `yaml:"browse-parent-dirs"`
+	Classic            bool     `yaml:"classic"`
 }
 
 // ShouldRunInNonInteractiveMode checks if the application should run in non-interactive mode
@@ -404,6 +406,15 @@ func (a *App) createUI() (UI, error) {
 			stdoutUI.SetShowItemCount()
 		}
 		ui = stdoutUI
+	case !a.Flags.Classic:
+		ui = charm.CreateUI(
+			os.Stdout,
+			!a.Flags.NoColor,
+			a.Flags.ShowApparentSize,
+			a.Flags.ShowRelativeSize,
+			a.Flags.UseSIPrefix,
+			a.getCharmOptions()...,
+		)
 	default:
 		opts := a.getOptions()
 
@@ -427,6 +438,14 @@ func (a *App) createUI() (UI, error) {
 	}
 
 	return ui, nil
+}
+
+func (a *App) getCharmOptions() []charm.Option {
+	var opts []charm.Option
+	if a.Flags.NoUnicode {
+		opts = append(opts, charm.UseOldSizeBar())
+	}
+	return opts
 }
 
 func (a *App) getOptions() []tui.Option {
