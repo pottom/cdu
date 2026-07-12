@@ -97,6 +97,13 @@ commit that adds or removes an import would conflict. Because the tracking branc
 is *pre-renamed*, and the script is deterministic and idempotent, git only ever
 sees upstream's real changes.
 
+**Sync PRs must merge with a real merge commit**, which is why `main` does not
+enforce linear history. The merge commit is what records the merge base; squash it
+and git forgets that `main` already contains `upstream-cdu`, so the next sync
+re-resolves the entire tree from scratch — exactly the pain the tracking branch
+exists to prevent. Feature PRs are squash-merged, so the history still reads flat
+apart from the sync points.
+
 ### Keeping the conflict surface small
 
 The rule that makes this work, enforced by the root `AGENTS.md`:

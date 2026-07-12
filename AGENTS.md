@@ -145,7 +145,12 @@ cost — justify it, and keep the diff minimal and localized.
     (`scripts/rename-upstream.sh`). This is what keeps import-path churn out of
     every future merge.
   - `main` — merges `upstream-cdu`, plus all cdu code. Protected: PR required,
-    CI green, linear history, no force-push.
+    CI green and up to date, no force-push, no deletion.
+- **Merge method depends on the PR.** Feature PRs are **squash-merged**, so the
+  history stays effectively flat. Sync PRs are merged with a **real merge commit**
+  — the merge base is what makes the *next* sync cheap, and squashing one would
+  throw it away and force every future sync to re-resolve the whole tree. This is
+  why `main` does not enforce linear history.
 - **Every change lands on a prefixed branch and a PR**, never straight to `main`:
   `feat/ fix/ chore/ docs/ refactor/ test/ perf/ ci/ build/` + a short slug.
   Conventional Commits (`type: summary`) drive the changelog.
