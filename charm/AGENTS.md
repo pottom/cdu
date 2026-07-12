@@ -37,6 +37,18 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   `mono` theme.
 - **Colours come from the palette struct**, never from a literal in the render
   path. `style.go` is the seed of the theme system.
+- **The Charm UI owns the terminal exclusively.** Nothing else may attach a reader
+  to it. `cmd/cdu/main.go` creates the tcell screen and tview application *only*
+  for `--classic`; when both existed at once they raced Bubble Tea for stdin and
+  each swallowed every other keystroke, so every key — including `q` — needed two
+  presses.
+- **Never measure or truncate a string that already carries styles.**
+  `runewidth` counts escape bytes as visible columns, so cutting a styled row to
+  the terminal width silently throws away most of its content and can leave a
+  background escape unterminated. Compose rows as plain text at an exact width,
+  then style. `lipgloss.Width` is escape-aware; `runewidth.StringWidth` is not.
+  `width_test.go` guards this under a forced truecolor profile — without forcing
+  it, Lipgloss falls back to plain ASCII in tests and the bug hides.
 - **The analyzer cannot be cancelled** — it has no context and no `Stop()`.
   Quitting mid-scan ends the program and lets the walk die with the process. Do
   not add cancellation by editing `pkg/analyze`; that file is upstream-owned.

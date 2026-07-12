@@ -228,7 +228,10 @@ func runE(command *cobra.Command, args []string) error {
 		af.ShowApparentSize = true
 	}
 
-	if !af.ShouldRunInNonInteractiveMode(istty) {
+	// Only the classic interface gets a tcell screen. The Charm interface runs its
+	// own Bubble Tea loop, and a second reader attached to the same terminal would
+	// race it for input — each of them swallowing every other keystroke.
+	if !af.ShouldRunInNonInteractiveMode(istty) && af.Classic {
 		screen, err = tcell.NewScreen()
 		if err != nil {
 			return fmt.Errorf("error creating screen: %w", err)
