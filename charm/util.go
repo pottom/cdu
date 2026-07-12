@@ -9,20 +9,6 @@ import (
 	"github.com/pottom/cdu/internal/common"
 )
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // iconWidthFor reports how much room the icon column takes at a given width.
 // Below the icon breakpoint it takes none.
 func iconWidthFor(width int) int {

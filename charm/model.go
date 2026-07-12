@@ -45,6 +45,10 @@ type model struct {
 
 	spinner  spinner.Model
 	progress common.CurrentProgress
+
+	// st is resolved once. It is several kilobytes of Lipgloss styles; rebuilding
+	// or copying it per row would put it squarely on the render hot path.
+	st styles
 }
 
 type (
@@ -59,7 +63,11 @@ func newModel(ui *UI) *model {
 		Frames: []string{"◐", "◓", "◑", "◒"},
 		FPS:    time.Second / 8,
 	}
-	return &model{ui: ui, spinner: sp}
+	return &model{
+		ui:      ui,
+		spinner: sp,
+		st:      newStyles(charmPalette(), ui.UseColors),
+	}
 }
 
 func (m *model) Init() tea.Cmd {

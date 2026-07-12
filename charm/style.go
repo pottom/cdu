@@ -16,21 +16,17 @@ import (
 // These are the `charm` theme's tokens from the design spec.
 type palette struct {
 	panel  lipgloss.Color
-	edge   lipgloss.Color
 	pink   lipgloss.Color
-	purple lipgloss.Color
 	text   lipgloss.Color
 	dim    lipgloss.Color
 	mint   lipgloss.Color
 	danger lipgloss.Color
 }
 
-func charmPalette() palette {
-	return palette{
+func charmPalette() *palette {
+	return &palette{
 		panel:  lipgloss.Color("#241c34"),
-		edge:   lipgloss.Color("#3a2f52"),
 		pink:   lipgloss.Color("#ff5fd1"),
-		purple: lipgloss.Color("#8b6dff"),
 		text:   lipgloss.Color("#cfc6ef"),
 		dim:    lipgloss.Color("#7d739e"),
 		mint:   lipgloss.Color("#4ff0c0"),
@@ -42,8 +38,6 @@ func charmPalette() palette {
 // (--no-color, NO_COLOR, or a dumb terminal) every style degrades to plain text,
 // which is why state is never conveyed by colour alone.
 type styles struct {
-	useColors bool
-
 	dirName  lipgloss.Style
 	fileName lipgloss.Style
 	selected lipgloss.Style
@@ -54,25 +48,23 @@ type styles struct {
 	danger   lipgloss.Style
 }
 
-func newStyles(p palette, useColors bool) styles {
+func newStyles(p *palette, useColors bool) styles {
 	if !useColors {
 		plain := lipgloss.NewStyle()
 		return styles{
-			useColors: false,
-			dirName:   plain.Bold(true),
-			fileName:  plain,
-			selected:  plain.Reverse(true),
-			size:      plain,
-			pct:       plain,
-			dim:       plain,
-			accent:    plain.Bold(true),
-			danger:    plain.Bold(true),
+			dirName:  plain.Bold(true),
+			fileName: plain,
+			selected: plain.Reverse(true),
+			size:     plain,
+			pct:      plain,
+			dim:      plain,
+			accent:   plain.Bold(true),
+			danger:   plain.Bold(true),
 		}
 	}
 	return styles{
-		useColors: true,
-		dirName:   lipgloss.NewStyle().Foreground(lipgloss.Color("#e9e3ff")),
-		fileName:  lipgloss.NewStyle().Foreground(p.text),
+		dirName:  lipgloss.NewStyle().Foreground(lipgloss.Color("#e9e3ff")),
+		fileName: lipgloss.NewStyle().Foreground(p.text),
 		selected: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#ffffff")).
 			Background(p.panel).

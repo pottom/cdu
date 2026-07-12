@@ -60,19 +60,18 @@ func (m *model) View() string {
 		return ""
 	}
 
-	st := newStyles(charmPalette(), m.ui.UseColors)
-
 	switch m.scr {
 	case screenError:
-		return st.danger.Render("error: ") + m.err.Error() + "\n"
+		return m.st.danger.Render("error: ") + m.err.Error() + "\n"
 	case screenScanning:
-		return m.viewScanning(st)
-	default:
-		return m.viewBrowse(st)
+		return m.viewScanning()
+	case screenBrowse:
+		return m.viewBrowse()
 	}
+	return ""
 }
 
-func (m *model) viewScanning(st styles) string {
+func (m *model) viewScanning() string {
 	progress := fmt.Sprintf(
 		"walking directories · %s items · %s",
 		humanCount(m.progress.ItemCount),
@@ -83,37 +82,37 @@ func (m *model) viewScanning(st styles) string {
 	if name != "" {
 		avail := m.width - 4
 		if avail > minNameWidth {
-			name = st.dim.Render(middleTruncate(name, avail))
+			name = m.st.dim.Render(middleTruncate(name, avail))
 		} else {
 			name = ""
 		}
 	}
 
-	body := m.spinner.View() + " " + st.accent.Render(progress)
+	body := m.spinner.View() + " " + m.st.accent.Render(progress)
 	if name != "" {
 		body += "\n" + name
 	}
 	return body + "\n"
 }
 
-func (m *model) viewBrowse(st styles) string {
+func (m *model) viewBrowse() string {
 	var b strings.Builder
 
 	if m.headerHeight() > 0 {
-		b.WriteString(m.viewHeader(st))
+		b.WriteString(m.viewHeader())
 		b.WriteByte('\n')
 	}
 
-	b.WriteString(m.viewList(st))
+	b.WriteString(m.viewList())
 
 	if m.footerHeight() > 0 {
-		b.WriteString(m.viewFooter(st))
+		b.WriteString(m.viewFooter())
 	}
 	return b.String()
 }
 
-func (m *model) viewHeader(st styles) string {
-	wordmark := st.accent.Render("cdu ✦")
+func (m *model) viewHeader() string {
+	wordmark := m.st.accent.Render("cdu ✦")
 
 	path := ""
 	if m.currentDir != nil {
@@ -125,24 +124,24 @@ func (m *model) viewHeader(st styles) string {
 	avail := m.width - lipgloss.Width(wordmark) - 5
 	line := wordmark
 	if avail > minNameWidth {
-		line += "  " + st.dim.Render("at ") + st.size.Render(middleTruncate(path, avail))
+		line += "  " + m.st.dim.Render("at ") + m.st.size.Render(middleTruncate(path, avail))
 	}
 
-	rule := st.dim.Render(strings.Repeat("─", maxInt(m.width, 1)))
+	rule := m.st.dim.Render(strings.Repeat("─", max(m.width, 1)))
 	return line + "\n" + rule
 }
 
-func (m *model) viewList(st styles) string {
+func (m *model) viewList() string {
 	visible := m.visibleRows()
 
 	if len(m.rows) == 0 {
-		return padLines(st.dim.Render("  (empty)"), visible)
+		return padLines(m.st.dim.Render("  (empty)"), visible)
 	}
 
 	// The window, and only the window, is rendered. A directory can hold tens of
 	// thousands of entries; building a string for all of them every frame is the
 	// cost this whole design exists to avoid.
-	end := minInt(m.offset+visible, len(m.rows))
+	end := min(m.offset+visible, len(m.rows))
 
 	// The percentage is the entry's share of the parent directory total.
 	total := int64(0)
@@ -152,13 +151,13 @@ func (m *model) viewList(st styles) string {
 
 	var b strings.Builder
 	for i := m.offset; i < end; i++ {
-		b.WriteString(m.viewRow(st, m.rows[i], i == m.cursor, total))
+		b.WriteString(m.viewRow(m.rows[i], i == m.cursor, total))
 		b.WriteByte('\n')
 	}
 	return padLines(strings.TrimRight(b.String(), "\n"), visible)
 }
 
-func (m *model) viewRow(st styles, item fs.Item, selected bool, total int64) string {
+func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	size := m.itemSize(item)
 
 	icon := ""
@@ -169,17 +168,17 @@ func (m *model) viewRow(st styles, item fs.Item, selected bool, total int64) str
 		case m.ui.noUnicode:
 			icon = "  "
 		case item.IsDir():
-			icon = st.accent.Render("▸") + " "
+			icon = m.st.accent.Render("▸") + " "
 		default:
-			icon = st.dim.Render("·") + " "
+			icon = m.st.dim.Render("·") + " "
 		}
 	}
 
-	sizeCell := st.size.Render(padLeft(m.ui.formatSize(size), sizeColWidth))
+	sizeCell := m.st.size.Render(padLeft(m.ui.formatSize(size), sizeColWidth))
 
 	pct := ""
 	if m.width >= minWidthForPct {
-		pct = st.pct.Render(padLeft(formatPct(size, total), pctColWidth))
+		pct = m.st.pct.Render(padLeft(formatPct(size, total), pctColWidth))
 	}
 
 	nameWidth := m.width - iconWidthFor(m.width) - sizeColWidth - lipgloss.Width(pct) - 3
@@ -202,9 +201,9 @@ func (m *model) viewRow(st styles, item fs.Item, selected bool, total int64) str
 	nameCell = runewidth.FillRight(nameCell, nameWidth)
 
 	if item.IsDir() {
-		nameCell = st.dirName.Render(nameCell)
+		nameCell = m.st.dirName.Render(nameCell)
 	} else {
-		nameCell = st.fileName.Render(nameCell)
+		nameCell = m.st.fileName.Render(nameCell)
 	}
 
 	row := icon + sizeCell + " " + nameCell + pct
@@ -212,23 +211,23 @@ func (m *model) viewRow(st styles, item fs.Item, selected bool, total int64) str
 		// No box-shadow in a terminal: the mock's glow becomes a filled
 		// background plus a bright marker, and the marker is what survives
 		// --no-color.
-		marker := st.accent.Render("▌")
-		return marker + st.selected.Render(runewidth.Truncate(
-			stripTrailing(row), maxInt(m.width-1, 1), "",
+		marker := m.st.accent.Render("▌")
+		return marker + m.st.selected.Render(runewidth.Truncate(
+			stripTrailing(row), max(m.width-1, 1), "",
 		))
 	}
 	return " " + row
 }
 
-func (m *model) viewFooter(st styles) string {
+func (m *model) viewFooter() string {
 	keys := []string{"↑↓ move", "→ open", "← back", "q quit"}
-	left := st.dim.Render(strings.Join(keys, "  "))
+	left := m.st.dim.Render(strings.Join(keys, "  "))
 
-	right := st.dim.Render("sorted by size · desc")
+	right := m.st.dim.Render("sorted by size · desc")
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		// Too narrow for both: the sort state is the more droppable of the two.
-		return runewidth.Truncate(left, maxInt(m.width, 1), "")
+		return runewidth.Truncate(left, max(m.width, 1), "")
 	}
 	return left + strings.Repeat(" ", gap) + right
 }
