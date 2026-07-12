@@ -110,7 +110,11 @@ doc written there would be describing a tree that gets overwritten from upstream
 **cdu-owned — ours to change freely.** New directories, so they cannot conflict:
 
     charm/  internal/theme/  internal/trash/  internal/selfupdate/
-    build/cdu.go  scripts/  docs/  AGENTS.md  NOTICE
+    build/cdu.go  scripts/  docs/  AGENTS.md  NOTICE  UPSTREAM_VERSION
+
+`UPSTREAM_VERSION` records which gdu tag the engine is at. It is the single source
+of truth for the `+gduA.B.C` build metadata and for the upstream watcher — update
+it only in a sync PR.
 
 **Conflict surface — edit deliberately, expect merge conflicts.** These are
 upstream files we must modify, and they are the only ones:
