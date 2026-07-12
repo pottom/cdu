@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cdu · disks</title>
+<style>
+  :root{--bg:#17131f;--term:#1d1729;--edge:#3a2f52;--pink:#ff5fd1;--purple:#8b6dff;
+    --lav:#cfc6ef;--dim:#7d739e;--mint:#4ff0c0}
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:radial-gradient(1000px 500px at 80% -10%,rgba(139,109,255,.18),transparent 60%),
+    radial-gradient(800px 450px at -10% 110%,rgba(255,95,209,.14),transparent 55%),var(--bg);
+    color:var(--lav);font-family:'SF Mono','JetBrains Mono',Menlo,Consolas,monospace;
+    padding:16px;min-height:100vh}
+  .term{max-width:760px;margin:0 auto;background:var(--term);border:1px solid var(--edge);
+    border-radius:14px;overflow:hidden;box-shadow:0 24px 60px -20px rgba(0,0,0,.7)}
+  .chrome{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--edge);
+    background:linear-gradient(180deg,rgba(255,255,255,.03),transparent)}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .ttl{margin-left:8px;color:var(--dim);font-size:12.5px}.ttl b{color:var(--lav)}
+  .cap{padding:10px 16px;color:var(--purple);font-size:12px;line-height:1.5;
+    border-bottom:1px solid var(--edge);background:rgba(0,0,0,.12)}
+  .cap code{color:var(--pink);background:rgba(255,95,209,.1);padding:1px 5px;border-radius:4px}
+  .screen{padding:14px 16px;font-size:13.5px}
+  @media(max-width:520px){.screen{font-size:11px;padding:11px}}
+  .head{border:1px solid var(--edge);border-radius:10px;padding:10px 13px;margin-bottom:12px;
+    background:linear-gradient(180deg,rgba(139,109,255,.06),rgba(255,95,209,.02));
+    display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .word{font-weight:800;font-size:17px;letter-spacing:1px;
+    background:linear-gradient(90deg,var(--pink),var(--purple) 70%);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .tag{font-size:10.5px;color:var(--purple);border:1px solid var(--purple);border-radius:999px;padding:2px 8px}
+  .sub{color:var(--dim);font-size:12px;margin-left:auto}
+  .colhead,.drow{display:grid;grid-template-columns:1.3fr 56px 56px 56px 1fr 46px;gap:10px;align-items:center}
+  .colhead{color:var(--dim);font-size:11px;padding:2px 10px 8px;border-bottom:1px solid var(--edge);margin-bottom:6px}
+  .colhead span:nth-child(n+2):nth-child(-n+4){text-align:right}
+  .drow{padding:5px 10px;border-radius:8px;border:1px solid transparent}
+  .drow.on{background:linear-gradient(90deg,rgba(255,95,209,.16),rgba(139,109,255,.10));border-color:var(--pink)}
+  .dev{color:#e9e3ff}.sz{color:var(--mint);text-align:right}.u{text-align:right;color:var(--lav)}
+  .pc{text-align:right;color:var(--dim)}
+  .bar{height:6px;border-radius:4px;background:#2a2140;overflow:hidden}
+  .bf{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--pink),var(--purple))}
+  .mnt{color:var(--dim);padding:0 10px 7px;font-size:12px}
+  .foot{display:flex;gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid var(--edge);
+    color:var(--dim);font-size:11.5px;align-items:center}
+  .kb{background:linear-gradient(180deg,#33264c,#281e3c);border:1px solid var(--edge);
+    border-bottom-color:#160f24;color:var(--pink);border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700}
+  .sp{flex:1}.hint{color:var(--purple)}
+</style>
+</head>
+<body>
+  <div class="term">
+    <div class="chrome"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="ttl">— <b>cdu</b> · disks (1/4)</span></div>
+    <div class="cap">Start here with <code>cdu -d</code>. Before scanning a folder, gdu can list every mounted
+      device — size, used, free, and a usage bar — so you pick the right disk. Press ↵ on one to analyze it.</div>
+    <div class="screen">
+      <div class="head"><span class="word">cdu ✦</span><span class="tag">disks</span>
+        <span class="sub">select a device to analyze</span></div>
+      <div class="colhead"><span>Device</span><span>Size</span><span>Used</span><span>Free</span><span>Usage</span><span></span></div>
+
+      <div class="drow on"><span class="dev">/dev/disk3s1</span><span class="sz">994G</span><span class="u">627G</span><span class="u">367G</span><span class="bar"><span class="bf" style="display:block;width:63%"></span></span><span class="pc">63%</span></div>
+      <div class="mnt">/</div>
+
+      <div class="drow"><span class="dev">/dev/disk3s5</span><span class="sz">994G</span><span class="u">512G</span><span class="u">482G</span><span class="bar"><span class="bf" style="display:block;width:52%"></span></span><span class="pc">52%</span></div>
+      <div class="mnt">/System/Volumes/Data</div>
+
+      <div class="drow"><span class="dev">/dev/disk4s2</span><span class="sz">2.0T</span><span class="u">1.4T</span><span class="u">0.6T</span><span class="bar"><span class="bf" style="display:block;width:70%"></span></span><span class="pc">70%</span></div>
+      <div class="mnt">/Volumes/Backup</div>
+
+      <div class="drow"><span class="dev">/dev/disk6s1</span><span class="sz">128G</span><span class="u">96G</span><span class="u">32G</span><span class="bar"><span class="bf" style="display:block;width:75%"></span></span><span class="pc">75%</span></div>
+      <div class="mnt">/Volumes/USB-SANDISK</div>
+
+      <div class="foot"><span><span class="kb">↑↓</span> move</span><span><span class="kb">↵</span> analyze</span>
+        <span class="sp"></span><span class="hint">4 mounted devices</span></div>
+    </div>
+  </div>
+</body>
+</html>

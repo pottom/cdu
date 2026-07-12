@@ -1,16 +1,25 @@
-# go DiskUsage()
+# cdu — charm disk usage
 
-<img src="./gdu.png" alt="Gdu " width="200" align="right">
+**cdu is a fork of [gdu](https://github.com/dundee/gdu) by Daniel Milde**, with its
+interactive interface rebuilt on the [Charm](https://charm.sh) stack (Bubble Tea,
+Lipgloss, Bubbles). The disk-analysis engine is gdu's, reused as-is — cdu is a
+reskin, not a rewrite. This is **not** the official gdu, and is not affiliated
+with or endorsed by it. See [NOTICE](./NOTICE).
 
-[![Codecov](https://codecov.io/gh/dundee/gdu/branch/master/graph/badge.svg)](https://codecov.io/gh/dundee/gdu)
-[![Go Report Card](https://goreportcard.com/badge/github.com/dundee/gdu)](https://goreportcard.com/report/github.com/dundee/gdu)
-[![Maintainability](https://api.codeclimate.com/v1/badges/30d793274607f599e658/maintainability)](https://codeclimate.com/github/dundee/gdu/maintainability)
-[![CodeScene Code Health](https://codescene.io/projects/13129/status-badges/code-health)](https://codescene.io/projects/13129)
+The name follows the family convention: ncdu = *ncurses* du, gdu = *go* du,
+**cdu = *charm* du**.
+
+- `cdu` opens the new Charm interface.
+- `cdu --classic` gives you gdu's original interface, unchanged.
+- Non-interactive and JSON export modes are byte-for-byte identical to gdu's.
 
 Pretty fast disk usage analyzer written in Go.
 
-Gdu is intended primarily for SSD disks where it can fully utilize parallel processing.
+Intended primarily for SSD disks where it can fully utilize parallel processing.
 However HDDs work as well, but the performance gain is not so huge.
+
+> The rest of this README is still gdu's and is being rewritten. Flags, themes,
+> install and self-update instructions land with the features they document.
 
 [![asciicast](https://asciinema.org/a/382738.svg)](https://asciinema.org/a/382738)
 

@@ -1,0 +1,31 @@
+cdu — charm disk usage
+======================
+
+cdu is a fork of gdu (https://github.com/dundee/gdu) by Daniel Milde,
+distributed under the MIT License. The original copyright notice and license
+text are preserved in LICENSE.md and continue to apply to all code inherited
+from gdu — which is the entire disk-analysis engine: pkg/, report/, stdout/,
+tui/ and internal/common/.
+
+cdu is NOT the official gdu, is not affiliated with or endorsed by the gdu
+project, and should not be reported to gdu's maintainers for bugs in its own
+user interface. Report cdu issues at https://github.com/pottom/cdu/issues.
+
+What cdu changes
+----------------
+
+cdu replaces gdu's interactive tview interface with a new one built on the
+Charm stack, and adds theming, an installer and a self-updater. The scanning
+engine is used as-is, not reimplemented. gdu's original interface remains
+available via `cdu --classic`, and the non-interactive and JSON export modes
+are byte-for-byte identical to gdu's.
+
+Third-party components
+----------------------
+
+  github.com/dundee/gdu            MIT   the disk-analysis engine
+  github.com/charmbracelet/*       MIT   Bubble Tea, Lipgloss, Bubbles
+  github.com/rivo/tview            MIT   the classic interface
+  github.com/gdamore/tcell         Apache-2.0
+
+Full dependency licenses are listed in the SBOM published with each release.
