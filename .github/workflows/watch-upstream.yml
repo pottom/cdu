@@ -1,0 +1,102 @@
+name: watch upstream gdu
+
+# Opens a PR when dundee/gdu cuts a new release, carrying the engine update into
+# cdu. It never pushes to main and never cuts a release: a merge conflict or a
+# broken build leaves the PR open (or the job red) for a human to resolve. An
+# upstream refactor of the analyzer API is expected to land here eventually, and
+# that is precisely the case that must not auto-merge.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve versions
+        id: versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest=$(gh api repos/dundee/gdu/releases/latest --jq .tag_name)
+          current=$(cat UPSTREAM_VERSION)
+          echo "latest=$latest"   >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$latest" = "$current" ]; then
+            echo "up-to-date=true" >> "$GITHUB_OUTPUT"
+            echo "cdu is on $current, which is the latest gdu release."
+          else
+            echo "up-to-date=false" >> "$GITHUB_OUTPUT"
+            echo "gdu $latest is out; cdu is on $current."
+          fi
+
+      - name: Merge upstream and re-apply the rename
+        if: steps.versions.outputs.up-to-date == 'false'
+        env:
+          LATEST: ${{ steps.versions.outputs.latest }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/dundee/gdu.git
+          git fetch upstream --tags
+
+          # `upstream` tracks gdu verbatim and must always fast-forward. If it
+          # cannot, upstream rewrote history and a human needs to look.
+          git checkout -B upstream origin/upstream
+          git merge --ff-only "$LATEST"
+
+          # The rename lives here, not on main — that is what keeps import-path
+          # churn out of every merge. Conflicts here are real upstream changes.
+          git checkout -B upstream-cdu origin/upstream-cdu
+          git merge --no-edit upstream
+          bash scripts/rename-upstream.sh
+          git commit -am "chore: rename gdu namespace to cdu for $LATEST" || true
+
+          git push origin upstream upstream-cdu
+
+      - name: Open the sync PR
+        if: steps.versions.outputs.up-to-date == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST: ${{ steps.versions.outputs.latest }}
+          CURRENT: ${{ steps.versions.outputs.current }}
+        run: |
+          set -euo pipefail
+          branch="chore/sync-gdu-$LATEST"
+          git checkout -B "$branch" origin/main
+          git merge --no-edit upstream-cdu
+          echo "$LATEST" > UPSTREAM_VERSION
+          git commit -am "chore: sync gdu engine $CURRENT -> $LATEST"
+          git push -u origin "$branch"
+
+          gh pr create \
+            --base main --head "$branch" \
+            --title "chore: sync gdu engine $CURRENT -> $LATEST" \
+            --body "Carries the gdu \`$LATEST\` engine into cdu.
+
+          Opened automatically by \`watch-upstream.yml\`. Merging is gated on green CI —
+          gdu does not honor semver for its packages, so an upstream change to the
+          analyzer API can break \`charm/\`. If CI is red, fix it on this branch; do not
+          merge and do not tag.
+
+          Engine version is recorded in \`UPSTREAM_VERSION\` and surfaced by
+          \`cdu --version\` as \`+gdu\` build metadata.
+
+          Review checklist:
+          - [ ] CI green (build, tests, lint)
+          - [ ] \`cdu --classic\` still opens gdu's interface
+          - [ ] non-interactive and \`-o\` export output unchanged
+          - [ ] conflicts, if any, were confined to the conflict surface in AGENTS.md"

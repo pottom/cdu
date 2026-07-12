@@ -23,6 +23,9 @@ upstream-owned — leave them alone.
   them to Bubble Tea and Lipgloss, never embed a browser.
 - Decision records — one file per architectural decision, with the evidence that
   drove it.
+  - `adr-001-upstream-sync-strategy.md` — the core/UI boundary, why gdu cannot be
+    consumed as a module, and the three-branch fork model. Read this before
+    touching anything that crosses the upstream boundary.
 
 ## Local Contracts
 
