@@ -14,6 +14,9 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `model.go` — the Bubble Tea model, messages, scan commands, cursor/window math.
 - `view.go` — `View()`, layout, breakpoints, row rendering.
 - `gradient.go` — the usage bar and its degradation across colour profiles.
+- `confirm.go` — the destructive actions: trash, delete, empty, undo, rescan.
+- `modal.go` — the confirmation box, its buttons, and how it sheds lines to fit.
+- `protected.go` — the paths that need the word typed out.
 - `style.go` — the palette and the resolved Lipgloss styles.
 - `util.go` — truncation, padding, formatting.
 
@@ -73,13 +76,44 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   text — `BenchmarkView` measured 0.25 ms/frame while a real terminal would have
   spent 4.1 ms. See `benchTruecolor` and `withProfile`.
 
+### Destructive actions
+
+- **The filesystem half runs in a `tea.Cmd`; the tree half runs on the loop.**
+  This is why `pkg/remove` is *not* called for deletes: it fuses the two, and they
+  cannot share a goroutine. Removing a large tree takes seconds, so it must be off
+  the render loop; the tree is read by `View`, so it must only be mutated on it.
+  The tree half still goes through the engine's own `RemoveFile`, which is what
+  carries the size and item count change up to the root.
+- **`Dir.AddFile` does not restore ancestor sizes** — only `RemoveFile` walks up.
+  Undo therefore calls `recomputeStats`, which is `UpdateStats` over the whole
+  tree: no disk I/O, and it is the engine's own summation rather than ours.
+- **`UpdateStats` is not idempotent against a used hard-link ledger.**
+  `alreadyCounted` *records* every inode it is shown, so a second pass over the
+  same `linkedItems` map counts every hard-linked file as zero bytes and the tree
+  silently shrinks. `recomputeStats` always starts a fresh map, exactly as a scan
+  does. `TestRecomputeIsStableAcrossHardLinks` guards it.
+- **The modal takes every key, including `q`.** While a delete is being confirmed,
+  `q` is a letter of the word being typed, not a way out of the program.
+- **The destructive button never holds the focus on entry**, and on a protected
+  path the focus cannot even reach it until `DELETE` is typed in full. No sequence
+  of single keypresses may delete a protected path.
+- **A disabled key says it is disabled.** `--no-delete` leaves the keys bound and
+  reports why nothing happened; a key that silently does nothing reads as a broken
+  interface. The same holds for `u` where the platform cannot restore.
+- **The modal states the consequence, not just the question.** That trashing does
+  not free disk space is the fact people most often do not know, so it is said
+  every time.
+
 ## Work Guidance
 
 Not yet implemented, and each pointing at `--classic` with an explicit error
 rather than failing silently: `ListDevices` (`-d`), `ReadFromStorage`
-(`--read-from-storage`). Deletion, sorting keys, mouse and the help/disks/top-files
-screens land in later slices. The footer advertises only bindings that exist —
-do not list a key before it works.
+(`--read-from-storage`). Sorting keys, mouse and the help/disks/top-files screens
+land in later slices. The footer advertises only bindings that exist — do not list
+a key before it works.
+
+Keys that act on the filesystem: `d` trash, `D` delete permanently, `e` empty a
+file, `u` undo the last trash, `r` rescan.
 
 ## Verification
 

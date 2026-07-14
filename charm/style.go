@@ -53,6 +53,11 @@ type styles struct {
 	dim      lipgloss.Style
 	accent   lipgloss.Style
 	danger   lipgloss.Style
+
+	modal        lipgloss.Style
+	button       lipgloss.Style
+	buttonFocus  lipgloss.Style
+	buttonDanger lipgloss.Style
 }
 
 func newStyles(p *palette, useColors bool) styles {
@@ -67,6 +72,13 @@ func newStyles(p *palette, useColors bool) styles {
 			dim:      plain,
 			accent:   plain.Bold(true),
 			danger:   plain.Bold(true),
+
+			modal: plain.Border(lipgloss.RoundedBorder()).Padding(0, modalPadding),
+			// Without colour the focused button is told apart by its brackets and by
+			// being reversed, never by hue alone.
+			button:       plain,
+			buttonFocus:  plain.Reverse(true).Bold(true),
+			buttonDanger: plain.Reverse(true).Bold(true),
 		}
 	}
 	return styles{
@@ -81,6 +93,24 @@ func newStyles(p *palette, useColors bool) styles {
 		dim:    lipgloss.NewStyle().Foreground(p.dim),
 		accent: lipgloss.NewStyle().Foreground(p.pink).Bold(true),
 		danger: lipgloss.NewStyle().Foreground(p.danger).Bold(true),
+
+		modal: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(p.pink).
+			Background(p.panel).
+			Foreground(p.text).
+			Padding(0, modalPadding),
+		button: lipgloss.NewStyle().
+			Foreground(p.dim).
+			Background(p.panel),
+		buttonFocus: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(p.dim).
+			Bold(true),
+		buttonDanger: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(p.danger).
+			Bold(true),
 	}
 }
 

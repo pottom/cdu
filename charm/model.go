@@ -19,6 +19,7 @@ type screen int
 const (
 	screenScanning screen = iota
 	screenBrowse
+	screenConfirm
 	screenError
 )
 
@@ -69,6 +70,29 @@ type model struct {
 
 	// bar probes the terminal's colour profile when it is built, not per frame.
 	bar barRenderer
+
+	// confirm is the pending destructive operation, nil when there is none.
+	confirm *confirmState
+
+	// lastTrashed is what undo would put back. Only a trashed item can come back,
+	// so a permanent delete leaves this nil — there is simply nothing to restore.
+	lastTrashed *trashed
+
+	// status is the last thing that happened, shown in the footer until the next
+	// keystroke. A destructive action that reports nothing is indistinguishable
+	// from one that silently failed.
+	status        string
+	statusIsError bool
+
+	// pending is the item currently being removed from disk. Removal runs off the
+	// render loop and can take seconds on a large tree, during which the row would
+	// otherwise sit there looking untouched — indistinguishable from a key that
+	// never registered. The row spins instead, and refuses further keys.
+	pending fs.Item
+
+	// frames is the spinner used both by the scan screen and by a row being
+	// deleted, so the two never disagree about what "working" looks like.
+	frames []string
 }
 
 type (
@@ -92,6 +116,7 @@ func newModel(ui *UI) *model {
 	return &model{
 		ui:      ui,
 		spinner: sp,
+		frames:  frames,
 		st:      st,
 		bar:     newBarRenderer(p, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
@@ -178,12 +203,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 
 	case tickMsg:
-		if m.scr != screenScanning {
+		// The same clock drives the scan line and a deleting row. Nothing is ticking
+		// when neither is happening, so an idle cdu wakes up for nothing.
+		if m.scr != screenScanning && m.pending == nil {
 			return m, nil
 		}
-		m.progress = m.ui.Analyzer.GetProgress()
 		m.ticks++
-		m.blinkOn = (m.ticks/blinkTicks)%2 == 0
+		if m.scr == screenScanning {
+			m.progress = m.ui.Analyzer.GetProgress()
+			m.blinkOn = (m.ticks/blinkTicks)%2 == 0
+		}
 		return m, tickCmd()
 
 	case scanDoneMsg:
@@ -201,6 +230,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dev = msg.dev
 		return m, nil
 
+	case deleteDoneMsg:
+		cmd := m.applyDelete(msg)
+		return m, cmd
+
+	case undoDoneMsg:
+		cmd := m.applyUndo(msg)
+		return m, cmd
+
 	case spinner.TickMsg:
 		if m.scr != screenScanning {
 			return m, nil
@@ -213,6 +250,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// The modal takes every key, including q: while a delete is being confirmed,
+	// q is a letter of the word being typed, not a way out of the program.
+	if m.scr == screenConfirm {
+		return m.handleConfirmKey(msg)
+	}
+
+	// The status line reports the last thing that happened, so it lives exactly as
+	// long as the user's attention is still on it.
+	m.status, m.statusIsError = "", false
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		// The analyzer exposes no cancellation — no context, no Stop. Quitting
@@ -244,6 +291,18 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.descend()
 	case "left", "h", "backspace":
 		m.ascend()
+	case "d":
+		m.askConfirm(actionTrash)
+	case "D":
+		m.askConfirm(actionDelete)
+	case "e":
+		m.askConfirm(actionEmpty)
+	case "u":
+		cmd := m.askUndo()
+		return m, cmd
+	case "r":
+		cmd := m.rescan()
+		return m, cmd
 	}
 	return m, nil
 }

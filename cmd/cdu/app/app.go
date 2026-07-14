@@ -445,6 +445,9 @@ func (a *App) getCharmOptions() []charm.Option {
 	if a.Flags.NoUnicode {
 		opts = append(opts, charm.UseOldSizeBar())
 	}
+	if a.Flags.NoDelete {
+		opts = append(opts, func(ui *charm.UI) { ui.SetNoDelete() })
+	}
 	return opts
 }
 

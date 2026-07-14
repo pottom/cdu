@@ -185,9 +185,9 @@ on the same tree; the bytes must match.
 ## Child DOX Index
 
 - `charm/AGENTS.md` — the default Bubble Tea interface.
+- `internal/trash/AGENTS.md` — recoverable deletes, per OS, CGO-free.
 - `docs/AGENTS.md` — the brief, design mocks, and architecture/decision records.
 - `scripts/AGENTS.md` — the upstream rename and sync tooling.
 
 Directories from the Ownership section that do not exist yet (`internal/theme/`,
-`internal/trash/`, `internal/selfupdate/`) get their own child doc in the PR that
-creates them.
+`internal/selfupdate/`) get their own child doc in the PR that creates them.
