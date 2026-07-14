@@ -35,6 +35,48 @@ intent of the requirement is met; the named component is not the way to meet it.
 `bubbles` is still used where it earns its keep — `spinner` for the scan
 indicator, and `help` for the key hints later.
 
+## CSS gradient → per-cell colouring, and three ways of giving up
+
+`.barfill` in the mock is a `linear-gradient(90deg, pink, purple)`. A terminal
+cell holds one foreground colour, so a gradient can only be approximated by
+colouring each cell of the bar separately.
+
+That reads as a gradient only with 24-bit colour. On a 256-colour terminal the
+interpolation quantises into visible bands, which looks like a rendering fault
+rather than a design. So the bar degrades in three steps, chosen from the Lipgloss
+colour profile at startup:
+
+| Terminal | Bar |
+|---|---|
+| truecolor | per-cell interpolation, pink → purple, blended in Luv |
+| 256 / 16 colours | solid accent fill |
+| `--no-color`, `NO_COLOR`, dumb | plain characters, no colour |
+| `--no-unicode` | `#` and `-` instead of `█` and `░` |
+
+Blending happens in Luv rather than RGB: a straight RGB interpolation between
+pink and purple passes through a muddy grey midpoint.
+
+The consequence for the design is a rule, not just an implementation detail: **the
+bar never carries information the row does not also carry as text.** It decorates
+the percentage column rather than replacing it, because on two of the four paths
+above the gradient does not exist.
+
+The ramp is precomputed at 64 steps. Building a Lipgloss style per cell per row
+per frame cost 4.1 ms/frame against 0.28 ms for the precomputed ramp, and the eye
+cannot separate neighbouring steps at that resolution.
+
+## Scan percentage → counts
+
+The mock's scan line counts down a percentage: `walking directories · 42%`. In the
+mock that number is `Math.random()`, and in a real scan it cannot be anything else.
+The analyzer does not know how large the tree is until it has walked it, so any
+percentage would be invented.
+
+The scan line reports what is actually known — items seen, bytes so far, and the
+path currently being walked. The blinking cursor from the mock is kept, driven off
+the same 100 ms tick that samples progress, so the two animations cannot beat
+against each other.
+
 ## Scan cancellation → process exit
 
 Not a terminal limitation, but an engine one, and it shows up in the UI.

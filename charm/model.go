@@ -1,13 +1,16 @@
 package charm
 
 import (
+	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/pkg/device"
 	"github.com/pottom/cdu/pkg/fs"
 )
 
@@ -24,6 +27,10 @@ const (
 // ticker rather than a subscription.
 const progressInterval = 100 * time.Millisecond
 
+// blinkTicks is the cursor's half-period, counted in progress samples: the mock
+// blinks it once a second.
+const blinkTicks = 5
+
 type model struct {
 	ui *UI
 
@@ -36,6 +43,11 @@ type model struct {
 	topDir     fs.Item
 	currentDir fs.Item
 
+	// dev is the volume the scan root lives on. Nil until it resolves, and nil
+	// forever if it cannot be resolved — the disk line is decoration, so its
+	// absence must never hold up the interface.
+	dev *device.Device
+
 	// rows is the current directory's children, materialised once per directory
 	// rather than re-derived every frame: GetFiles returns an iterator, and
 	// walking it on each render would put sorting on the hot path.
@@ -46,27 +58,43 @@ type model struct {
 	spinner  spinner.Model
 	progress common.CurrentProgress
 
+	// ticks counts progress samples, which is also what drives the cursor blink —
+	// one clock rather than two, so the scan line cannot beat against itself.
+	ticks   int
+	blinkOn bool
+
 	// st is resolved once. It is several kilobytes of Lipgloss styles; rebuilding
 	// or copying it per row would put it squarely on the render hot path.
 	st styles
+
+	// bar probes the terminal's colour profile when it is built, not per frame.
+	bar barRenderer
 }
 
 type (
 	scanDoneMsg struct{ dir fs.Item }
 	scanErrMsg  struct{ err error }
 	tickMsg     struct{}
+	deviceMsg   struct{ dev *device.Device }
 )
 
 func newModel(ui *UI) *model {
-	sp := spinner.New()
-	sp.Spinner = spinner.Spinner{
-		Frames: []string{"◐", "◓", "◑", "◒"},
-		FPS:    time.Second / 8,
+	frames := []string{"◐", "◓", "◑", "◒"}
+	if ui.noUnicode {
+		frames = []string{"|", "/", "-", "\\"}
 	}
+	sp := spinner.New()
+	sp.Spinner = spinner.Spinner{Frames: frames, FPS: time.Second / 8}
+	p := charmPalette()
+	st := newStyles(p, ui.UseColors)
+	sp.Style = st.accent
+
 	return &model{
 		ui:      ui,
 		spinner: sp,
-		st:      newStyles(charmPalette(), ui.UseColors),
+		st:      st,
+		bar:     newBarRenderer(p, ui.UseColors, ui.noUnicode),
+		blinkOn: true,
 	}
 }
 
@@ -76,9 +104,49 @@ func (m *model) Init() tea.Cmd {
 		m.enterDir(m.ui.topDir)
 		m.topDir = m.ui.topDir
 		m.scr = screenBrowse
-		return nil
+		return deviceCmd(m.ui)
 	}
-	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd())
+	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd(), deviceCmd(m.ui))
+}
+
+// deviceCmd resolves the volume the scan root sits on. It runs off the render
+// loop because reading the mount table can block — on a stale network mount, for
+// a long time — and the interface must come up regardless.
+func deviceCmd(ui *UI) tea.Cmd {
+	return func() tea.Msg {
+		if ui.getter == nil {
+			return nil
+		}
+		mounts, err := ui.getter.GetDevicesInfo()
+		if err != nil {
+			// The disk line is decoration. A machine that will not report its
+			// mounts still gets a working browser, just without it.
+			return nil
+		}
+		return deviceMsg{dev: deviceFor(ui.rootPath(), mounts)}
+	}
+}
+
+// deviceFor picks the volume a path lives on: the mount point that is the
+// longest prefix of it. Longest wins because mount points nest — /home is not
+// the right answer for a path under /home/me/vault when that is its own mount.
+func deviceFor(path string, mounts device.Devices) *device.Device {
+	var best *device.Device
+	for _, mount := range mounts {
+		if !strings.HasPrefix(path, mount.MountPoint) {
+			continue
+		}
+		// "/var" must not match "/variable": only a component boundary counts.
+		rest := path[len(mount.MountPoint):]
+		if rest != "" && !strings.HasPrefix(rest, string(filepath.Separator)) &&
+			!strings.HasSuffix(mount.MountPoint, string(filepath.Separator)) {
+			continue
+		}
+		if best == nil || len(mount.MountPoint) > len(best.MountPoint) {
+			best = mount
+		}
+	}
+	return best
 }
 
 // scanCmd runs the blocking walk off the render loop.
@@ -114,6 +182,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.progress = m.ui.Analyzer.GetProgress()
+		m.ticks++
+		m.blinkOn = (m.ticks/blinkTicks)%2 == 0
 		return m, tickCmd()
 
 	case scanDoneMsg:
@@ -125,6 +195,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scanErrMsg:
 		m.err = msg.err
 		m.scr = screenError
+		return m, nil
+
+	case deviceMsg:
+		m.dev = msg.dev
 		return m, nil
 
 	case spinner.TickMsg:

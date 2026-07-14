@@ -54,7 +54,9 @@ func TestReadAnalysisOpensSavedScan(t *testing.T) {
 	require.NoError(t, ui.ReadAnalysis(strings.NewReader(saved)))
 
 	m := newModel(ui)
-	require.Nil(t, m.Init(), "a saved scan needs no walk")
+	// Init still resolves the disk line, but it must not walk anything: the tree
+	// is already in memory, so the browser opens on the first frame.
+	m.Init()
 	assert.Equal(t, screenBrowse, m.scr)
 	assert.Equal(t, "/tmp/test", m.currentDir.GetPath())
 	assert.NotEmpty(t, m.rows, "saved scan produced no rows")

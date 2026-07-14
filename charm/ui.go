@@ -9,6 +9,7 @@ package charm
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -32,6 +33,10 @@ type UI struct {
 	scanPath string
 	// topDir is set ahead of the loop when a saved scan is opened with -f.
 	topDir fs.Item
+
+	// getter backs the header's disk line. It is optional: without it, or on a
+	// path that belongs to no listed mount, the line is simply not drawn.
+	getter device.DevicesInfoGetter
 
 	noUnicode bool
 	sortBy    fs.SortBy
@@ -72,6 +77,25 @@ func CreateUI(
 // UseOldSizeBar switches to ASCII runes for terminals without unicode.
 func UseOldSizeBar() Option {
 	return func(ui *UI) { ui.noUnicode = true }
+}
+
+// WithDeviceGetter supplies the mount table the header's disk line is drawn from.
+func WithDeviceGetter(getter device.DevicesInfoGetter) Option {
+	return func(ui *UI) { ui.getter = getter }
+}
+
+// rootPath is the absolute path the scan is rooted at, which is what the disk
+// line is resolved against.
+func (ui *UI) rootPath() string {
+	path := ui.scanPath
+	if path == "" && ui.topDir != nil {
+		path = ui.topDir.GetPath()
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
 }
 
 // AnalyzePath records the path to walk. The walk itself runs as a Bubble Tea

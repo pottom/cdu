@@ -13,6 +13,7 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `ui.go` — `charm.UI`, the `app.UI` implementation and the entry point.
 - `model.go` — the Bubble Tea model, messages, scan commands, cursor/window math.
 - `view.go` — `View()`, layout, breakpoints, row rendering.
+- `gradient.go` — the usage bar and its degradation across colour profiles.
 - `style.go` — the palette and the resolved Lipgloss styles.
 - `util.go` — truncation, padding, formatting.
 
@@ -52,21 +53,47 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - **The analyzer cannot be cancelled** — it has no context and no `Stop()`.
   Quitting mid-scan ends the program and lets the walk die with the process. Do
   not add cancellation by editing `pkg/analyze`; that file is upstream-owned.
+- **`View()` returns exactly `m.height` lines, with no trailing newline.** One
+  line too many and the terminal scrolls on every frame. `padLines` both pads and
+  clips for this reason: a list height is not always a whole number of entries,
+  because an entry is two lines once the bar is drawn.
+- **Entries and lines are different units.** An entry is two lines above
+  `minWidthForBar` and one below it. `visibleRows()` counts entries and drives
+  scrolling and paging; `visibleLines()` counts lines and drives rendering.
+  Conflating them makes the list scroll by halves.
+- **The bar never carries meaning the row does not also carry as text.** It is
+  decoration for the percentage column, not a substitute for it — on a
+  256-colour terminal it degrades to a solid fill, and without colour to plain
+  characters, so anything encoded only in its gradient would be lost.
+- **Anything that can block runs as a `tea.Cmd`, never inline in `Init`.** The
+  walk and the mount-table read both can: `GetDevicesInfo` will hang on a stale
+  network mount. The disk line simply does not appear if it cannot be resolved.
+- **Benchmarks and rendering tests must force a colour profile.** The test process
+  has no TTY, so Lipgloss emits no escapes and the gradient collapses to plain
+  text — `BenchmarkView` measured 0.25 ms/frame while a real terminal would have
+  spent 4.1 ms. See `benchTruecolor` and `withProfile`.
 
 ## Work Guidance
 
 Not yet implemented, and each pointing at `--classic` with an explicit error
 rather than failing silently: `ListDevices` (`-d`), `ReadFromStorage`
-(`--read-from-storage`). Deletion, sorting keys, the gradient bars, mouse and the
-help/disks/top-files screens land in later slices.
+(`--read-from-storage`). Deletion, sorting keys, mouse and the help/disks/top-files
+screens land in later slices. The footer advertises only bindings that exist —
+do not list a key before it works.
 
 ## Verification
 
     go test ./charm/...
+    go test ./charm/ -bench=. -benchtime=200x -run=XXX
 
 The suite covers navigation, the never-panic rule across seven terminal sizes
-(including 0×0 and 1×1), windowing under a 5000-row listing, and a full Bubble Tea
-program run driven headlessly with injected input and output.
+(including 0×0 and 1×1), windowing under a 5000-row listing, exact frame height
+on every screen across 72 size combinations, exact row and bar widths under a
+forced truecolor profile, and a full Bubble Tea program run driven headlessly with
+injected input and output.
+
+`View()` costs ~0.28 ms and must stay flat as directory size grows — that number
+being identical at 100 and 10,000 rows is the standing proof the list is windowed.
 
 ## Child DOX Index
 
