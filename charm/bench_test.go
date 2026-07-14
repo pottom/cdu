@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/fs"
@@ -42,8 +44,19 @@ func benchModel(n int) *model {
 	return m
 }
 
+// benchTruecolor forces the profile a real terminal would report. Without it the
+// benchmark runs against a TTY-less process, where Lipgloss emits no escapes and
+// the gradient bar collapses to plain text — measuring a renderer nobody runs.
+func benchTruecolor(b *testing.B) {
+	b.Helper()
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	b.Cleanup(func() { lipgloss.SetColorProfile(original) })
+}
+
 // BenchmarkView is the render hot path: it must not scale with directory size.
 func BenchmarkView(b *testing.B) {
+	benchTruecolor(b)
 	for _, n := range []int{100, 10000} {
 		b.Run(itoa(n), func(b *testing.B) {
 			m := benchModel(n)
@@ -57,6 +70,7 @@ func BenchmarkView(b *testing.B) {
 
 // BenchmarkKeyDown is what the user actually feels: one keystroke, one redraw.
 func BenchmarkKeyDown(b *testing.B) {
+	benchTruecolor(b)
 	for _, n := range []int{100, 10000} {
 		b.Run(itoa(n), func(b *testing.B) {
 			m := benchModel(n)

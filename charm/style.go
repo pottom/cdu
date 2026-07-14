@@ -17,20 +17,27 @@ import (
 type palette struct {
 	panel  lipgloss.Color
 	pink   lipgloss.Color
+	purple lipgloss.Color
 	text   lipgloss.Color
 	dim    lipgloss.Color
 	mint   lipgloss.Color
 	danger lipgloss.Color
+
+	// The usage bar: the gradient runs pink → purple across the filled part,
+	// over an unlit track.
+	barTrack lipgloss.Color
 }
 
 func charmPalette() *palette {
 	return &palette{
-		panel:  lipgloss.Color("#241c34"),
-		pink:   lipgloss.Color("#ff5fd1"),
-		text:   lipgloss.Color("#cfc6ef"),
-		dim:    lipgloss.Color("#7d739e"),
-		mint:   lipgloss.Color("#4ff0c0"),
-		danger: lipgloss.Color("#ff2fb3"),
+		panel:    lipgloss.Color("#241c34"),
+		pink:     lipgloss.Color("#ff5fd1"),
+		purple:   lipgloss.Color("#8b6dff"),
+		text:     lipgloss.Color("#cfc6ef"),
+		dim:      lipgloss.Color("#7d739e"),
+		mint:     lipgloss.Color("#4ff0c0"),
+		danger:   lipgloss.Color("#ff2fb3"),
+		barTrack: lipgloss.Color("#2a2140"),
 	}
 }
 

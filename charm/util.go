@@ -16,17 +16,21 @@ func padLeft(s string, width int) string {
 	return strings.Repeat(" ", width-runewidth.StringWidth(s)) + s
 }
 
-// padLines pads a block out to exactly n lines, so the footer never floats up
-// into the middle of a short list.
+// padLines fits a block to exactly n lines and no trailing newline: it pads a
+// short one, so the footer never floats up into the middle of a short list, and
+// clips a long one, so a list whose height is not a whole number of entries
+// cannot push the footer off the bottom of the screen. Getting this wrong by one
+// line makes the whole frame scroll on every render.
 func padLines(s string, n int) string {
-	lines := strings.Count(s, "\n") + 1
-	if s == "" {
-		lines = 0
+	if n < 1 {
+		return ""
 	}
-	if lines >= n {
-		return s + "\n"
+
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		return strings.Join(lines[:n], "\n")
 	}
-	return s + strings.Repeat("\n", n-lines+1)
+	return s + strings.Repeat("\n", n-len(lines))
 }
 
 // middleTruncate keeps both ends of a path readable, which matters more than

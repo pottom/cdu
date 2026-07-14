@@ -441,7 +441,7 @@ func (a *App) createUI() (UI, error) {
 }
 
 func (a *App) getCharmOptions() []charm.Option {
-	var opts []charm.Option
+	opts := []charm.Option{charm.WithDeviceGetter(a.Getter)}
 	if a.Flags.NoUnicode {
 		opts = append(opts, charm.UseOldSizeBar())
 	}
