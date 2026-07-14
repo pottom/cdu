@@ -112,6 +112,8 @@ func (m *model) View() string {
 		return m.viewScanning()
 	case screenBrowse:
 		return m.viewBrowse()
+	case screenConfirm:
+		return m.viewConfirm()
 	}
 	return ""
 }
@@ -323,9 +325,16 @@ func fraction(size, total int64) float64 {
 func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	size := m.itemSize(item)
 
+	removing := item == m.pending
+
 	icon := ""
 	if m.width >= minWidthForIcon {
 		switch {
+		case removing:
+			// The removal is happening off the render loop and can take seconds. The
+			// row spins so that the wait is visible rather than looking like a key
+			// that never registered.
+			icon = m.tickFrame() + " "
 		case m.ui.noUnicode:
 			icon = "  "
 			if item.IsDir() {
@@ -365,6 +374,11 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	case 'H':
 		name += " ⇉"
 	}
+	if removing {
+		// The word, not just the spinner: the state has to survive --no-color and a
+		// terminal too narrow for the icon column.
+		name = "removing " + name
+	}
 	nameText := runewidth.FillRight(runewidth.Truncate(name, nameWidth, "…"), nameWidth)
 
 	plain := icon + sizeText + " " + nameText + pctText
@@ -379,14 +393,26 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 
 	nameStyle := m.st.fileName
 	iconStyle := m.st.dim
-	if item.IsDir() {
-		nameStyle = m.st.dirName
-		iconStyle = m.st.accent
+	switch {
+	case removing:
+		nameStyle, iconStyle = m.st.dim, m.st.accent
+	case item.IsDir():
+		nameStyle, iconStyle = m.st.dirName, m.st.accent
 	}
 	return " " + iconStyle.Render(icon) +
 		m.st.size.Render(sizeText) + " " +
 		nameStyle.Render(nameText) +
 		m.st.pct.Render(pctText)
+}
+
+// tickFrame is the spinner frame for a row being removed. It runs off the same
+// 100 ms tick as the scan progress, so there is one clock in the interface rather
+// than two drifting against each other.
+func (m *model) tickFrame() string {
+	if len(m.frames) == 0 {
+		return " "
+	}
+	return m.frames[m.ticks%len(m.frames)]
 }
 
 type keyHint struct{ key, label string }
@@ -399,17 +425,28 @@ var (
 		{"↑↓", "move"},
 		{"→", "open"},
 		{"←", "back"},
+		{"d", "trash"},
+		{"D", "delete"},
 		{"q", "quit"},
 	}
 	scanKeys = []keyHint{
 		{"q", "quit"},
 	}
+	confirmKeys = []keyHint{
+		{"←→", "choose"},
+		{"enter", "confirm"},
+		{"esc", "cancel"},
+	}
 )
 
 func (m *model) viewFooter() string {
 	keys := browseKeys
-	if m.scr == screenScanning {
+	switch m.scr {
+	case screenScanning:
 		keys = scanKeys
+	case screenConfirm:
+		keys = confirmKeys
+	case screenBrowse, screenError:
 	}
 
 	var plain, styled strings.Builder
@@ -427,19 +464,33 @@ func (m *model) viewFooter() string {
 		styled.WriteString(m.st.dim.Render(k.label))
 	}
 
-	// The sort state describes a list, so it says nothing while there isn't one.
-	sort := ""
-	if m.scr == screenBrowse {
-		sort = m.sortLabel()
+	// The right-hand side is whichever matters more right now: what just happened,
+	// or — when nothing has — how the list is sorted. A destructive action that
+	// reported nothing would be indistinguishable from one that silently failed.
+	right, rightStyle := "", m.st.dim
+	switch {
+	case m.status != "":
+		right = m.status
+		if m.statusIsError {
+			rightStyle = m.st.danger
+		} else {
+			rightStyle = m.st.accent
+		}
+	case m.scr == screenBrowse:
+		right = m.sortLabel()
 	}
 
-	gap := m.width - runewidth.StringWidth(plain.String()) - runewidth.StringWidth(sort)
+	gap := m.width - runewidth.StringWidth(plain.String()) - runewidth.StringWidth(right)
 	if gap < 1 {
-		// Too narrow for both. The sort state is the more droppable of the two: it
-		// is a fact about the list, whereas the keys are the only way out of it.
+		// Too narrow for both. The keys are the only way out of the screen, so they
+		// are what survives — except when something just happened, which is the one
+		// thing the user needs to read.
+		if m.status != "" {
+			return rightStyle.Render(runewidth.Truncate(right, max(m.width, 1), "…"))
+		}
 		return m.st.dim.Render(runewidth.Truncate(plain.String(), max(m.width, 1), ""))
 	}
-	return styled.String() + strings.Repeat(" ", gap) + m.st.dim.Render(sort)
+	return styled.String() + strings.Repeat(" ", gap) + rightStyle.Render(right)
 }
 
 func (m *model) sortLabel() string {

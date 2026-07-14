@@ -68,7 +68,7 @@ func TestRowWidthsUnderTruecolor(t *testing.T) {
 func TestFrameHeight(t *testing.T) {
 	withProfile(t, termenv.TrueColor)
 
-	for _, scr := range []screen{screenBrowse, screenScanning} {
+	for _, scr := range []screen{screenBrowse, screenScanning, screenConfirm} {
 		for _, width := range []int{40, 79, 80, 120} {
 			for _, height := range []int{1, 2, 3, 4, 5, 6, 11, 24, 50} {
 				m := benchModel(50)
@@ -76,6 +76,12 @@ func TestFrameHeight(t *testing.T) {
 				m.haveSize = true
 				m.scr = scr
 				m.progress.CurrentItemName = "/some/deeply/nested/path/being/walked/right/now"
+				// The modal is the tallest thing the interface draws, so it is the one
+				// most able to push the footer off the bottom of a short terminal.
+				m.confirm = &confirmState{
+					item: m.rows[0], parent: m.currentDir,
+					act: actionDelete, requireTyping: true,
+				}
 				// With a disk the header is three lines, which is the case where the
 				// list height stops being a whole number of two-line entries.
 				m.dev = &device.Device{Name: "Macintosh HD", MountPoint: "/", Size: 994 << 30, Free: 210 << 30}

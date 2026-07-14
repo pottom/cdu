@@ -39,6 +39,7 @@ type UI struct {
 	getter device.DevicesInfoGetter
 
 	noUnicode bool
+	noDelete  bool
 	sortBy    fs.SortBy
 	sortOrder fs.SortOrder
 }
@@ -82,6 +83,12 @@ func UseOldSizeBar() Option {
 // WithDeviceGetter supplies the mount table the header's disk line is drawn from.
 func WithDeviceGetter(getter device.DevicesInfoGetter) Option {
 	return func(ui *UI) { ui.getter = getter }
+}
+
+// SetNoDelete disables every destructive key. The keys stay bound and say they
+// are disabled: a key that silently does nothing reads as a broken interface.
+func (ui *UI) SetNoDelete() {
+	ui.noDelete = true
 }
 
 // rootPath is the absolute path the scan is rooted at, which is what the disk

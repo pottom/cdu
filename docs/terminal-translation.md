@@ -77,6 +77,34 @@ path currently being walked. The blinking cursor from the mock is kept, driven o
 the same 100 ms tick that samples progress, so the two animations cannot beat
 against each other.
 
+## The delete modal → what gdu's `d` used to mean
+
+Not a terminal limitation, but a deliberate break with upstream, recorded here
+because someone coming from gdu will notice it.
+
+gdu's `d` deletes permanently — `os.RemoveAll`, and it is gone. The brief asks for
+recoverable deletes, and the two cannot both be true of one key. So:
+
+- `d` moves the item to the OS trash, and `u` undoes it.
+- `D` deletes permanently.
+- `e` empties a file.
+
+The modal states what will actually be true afterwards rather than merely asking
+whether you are sure. In particular it says, every time, that **the trash does not
+free disk space** — the item stays on the same volume. That is the fact most likely
+to catch out the person who opened cdu precisely because a disk was full, and it is
+the reason the permanent delete keeps a key of its own rather than being buried
+behind a flag.
+
+Two things the mock's modal does not have, and that the terminal has no trouble
+with:
+
+- **The destructive button never holds the focus.** A reflexive Enter cancels.
+- **Protected paths need the word typed out.** The filesystem root, `$HOME`, the
+  directories directly inside `$HOME`, and any mount point cannot be deleted by any
+  sequence of single keypresses — the focus cannot even reach the button until
+  `DELETE` is complete.
+
 ## Scan cancellation → process exit
 
 Not a terminal limitation, but an engine one, and it shows up in the UI.
