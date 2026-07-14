@@ -73,10 +73,12 @@ func MoveToTrash(path string) (*Entry, error) {
 			fofSilent | fofNoErrorUI | fofWantNukeWarning,
 	}
 
-	// The shell reports failure through the return value, not through GetLastError.
-	ret, _, _ := shFileOperationW.Call(uintptr(unsafe.Pointer(&op)))
+	// The shell reports failure through the return value, not through GetLastError:
+	// callErr is set even on success ("The operation completed successfully"), so it
+	// is only worth reading once the return code has already said something is wrong.
+	ret, _, callErr := shFileOperationW.Call(uintptr(unsafe.Pointer(&op)))
 	if ret != 0 {
-		return nil, fmt.Errorf("the shell refused to recycle %s (code %d)", path, ret)
+		return nil, fmt.Errorf("the shell refused to recycle %s (code %d): %w", path, ret, callErr)
 	}
 	if op.fAnyOperationsAborted != 0 {
 		return nil, fmt.Errorf("recycling %s was aborted", path)

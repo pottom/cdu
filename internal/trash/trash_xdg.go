@@ -55,7 +55,9 @@ func MoveToTrash(path string) (*Entry, error) {
 		// The move already happened. Rather than leave an item in the trash that
 		// nothing can restore, put it back and report the failure.
 		if restoreErr := os.Rename(target, path); restoreErr != nil {
-			return nil, fmt.Errorf("%w (and %s could not be moved back: %v)", err, target, restoreErr)
+			// Both halves are wrapped: the caller needs to know that the item is now
+			// stranded in the trash without a sidecar, not merely that a write failed.
+			return nil, fmt.Errorf("%w (and %s could not be moved back: %w)", err, target, restoreErr)
 		}
 		return nil, err
 	}
