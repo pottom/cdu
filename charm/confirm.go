@@ -227,7 +227,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cancelConfirm()
 		return m, nil
 
-	case "left", "right", "tab", "h", "l":
+	case keyLeft, "right", "tab", "h", "l":
 		// Focus cannot move onto the destructive button while the typed
 		// confirmation is still incomplete: there would be nothing left to stop an
 		// Enter from firing it.
@@ -236,7 +236,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "enter":
+	case keyEnter:
 		if !c.confirmFocused {
 			m.cancelConfirm()
 			return m, nil
@@ -252,7 +252,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// invisibly and the row would sit there looking as though nothing happened.
 		return m, tea.Batch(deleteCmd(c.parent, c.item, c.act), tickCmd())
 
-	case "backspace":
+	case keyBackspace:
 		if c.requireTyping && c.typed != "" {
 			c.typed = c.typed[:len(c.typed)-1]
 		}
@@ -311,24 +311,52 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 	return deviceCmd(m.ui)
 }
 
-// dropRow removes one entry from the visible list without rebuilding it, so the
-// cursor stays where the user left it rather than jumping back to the top.
+// dropRow removes one entry from the list without rebuilding it, so the cursor
+// stays where the user left it rather than jumping back to the top. It removes
+// from both the full list and the filtered view: the item is gone from disk, and
+// a filter that went on listing it would be lying.
 func (m *model) dropRow(item fs.Item) {
-	for i, row := range m.rows {
-		if row == item {
-			m.rows = append(m.rows[:i], m.rows[i+1:]...)
-			break
-		}
+	m.rows = removeItem(m.rows, item)
+	if m.filtered != nil {
+		m.filtered = removeItem(m.filtered, item)
 	}
 	m.clampCursor()
 }
 
-// reloadRows re-reads the current directory. Emptying a file replaces it with a
-// new zero-sized one, which re-sorts.
+func removeItem(items []fs.Item, item fs.Item) []fs.Item {
+	for i, row := range items {
+		if row == item {
+			return append(items[:i], items[i+1:]...)
+		}
+	}
+	return items
+}
+
+// reloadRows re-reads the current directory, keeping the selection on the same
+// *item* rather than the same row number. Re-sorting moves every row, and a cursor
+// that stayed at index 4 would silently be pointing at something else — which
+// matters rather a lot when the next key might be D.
+//
+// A live filter survives: enterDir drops it, but re-sorting a filtered list should
+// reorder the matches, not throw the filter away. So it is re-applied and the
+// selection is found in the filtered view.
 func (m *model) reloadRows() {
-	cursor := m.cursor
+	selected := m.selected()
+	filtering, filter := m.filtering, m.filter
+
 	m.enterDir(m.currentDir)
-	m.cursor = cursor
+
+	m.filtering, m.filter = filtering, filter
+	m.applyFilter()
+
+	if selected != nil {
+		for i, row := range m.items() {
+			if row == selected {
+				m.cursor = i
+				break
+			}
+		}
+	}
 	m.clampCursor()
 }
 

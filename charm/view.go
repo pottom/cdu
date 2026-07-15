@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
 	"github.com/pottom/cdu/pkg/fs"
@@ -11,9 +12,20 @@ import (
 
 // Layout constants. Everything else is derived from the live terminal size.
 const (
-	sizeColWidth = 10
-	pctColWidth  = 5
-	iconWidth    = 2
+	sizeColWidth  = 10
+	pctColWidth   = 5
+	iconWidth     = 2
+	countColWidth = 9
+
+	// Minute precision: the seconds are never what anyone is looking at in a disk
+	// usage tool, and they cost three columns the name would rather have.
+	mtimeLayout = "2006-01-02 15:04"
+
+	// The optional columns only appear where they leave the name worth reading.
+	// Asking for a column the terminal cannot fit and getting a four-character
+	// name back is not what the keypress meant.
+	minWidthForItemCount = 72
+	minWidthForMtime     = 92
 
 	// The row is: gutter(1) + icon + size + gap(1) + name + pct. barIndent is
 	// everything left of the name, minus the icon, which is not always drawn.
@@ -41,6 +53,10 @@ const (
 	diskBarWidth = 24
 
 	minNameWidth = 4
+
+	// minRightWidth is the room the footer keeps for the sort state, or for
+	// whatever just happened. The key hints get everything else.
+	minRightWidth = 22
 )
 
 func (m *model) headerHeight() int {
@@ -114,8 +130,62 @@ func (m *model) View() string {
 		return m.viewBrowse()
 	case screenConfirm:
 		return m.viewConfirm()
+	case screenViewer:
+		return m.viewViewer()
 	}
 	return ""
+}
+
+// viewerHeight is the number of file lines that fit: the whole terminal, less a
+// one-line header and a one-line footer.
+func (m *model) viewerHeight() int {
+	return max(m.height-2, 1)
+}
+
+// viewViewer renders the file pager: a header naming the file, the visible slice
+// of its lines, and a footer with the scroll keys. Exactly m.height lines, like
+// every other screen, so the frame never scrolls on its own.
+func (m *model) viewViewer() string {
+	v := m.viewer
+
+	header := m.st.accent.Render("▏ ") +
+		m.st.dirName.Render(runewidth.Truncate(v.path, max(m.width-2, 1), "…"))
+
+	height := m.viewerHeight()
+	end := min(v.offset+height, len(v.lines))
+
+	var b strings.Builder
+	for i := v.offset; i < end; i++ {
+		b.WriteString(m.st.fileName.Render(truncateLine(v.lines[i], m.width)))
+		b.WriteByte('\n')
+	}
+	body := padLines(strings.TrimRight(b.String(), "\n"), height)
+
+	// padLines has the last word on height: on a terminal too short for the header,
+	// a body line and the footer, the whole thing is clipped to exactly m.height so
+	// the frame never scrolls on its own.
+	return padLines(header+"\n"+body+"\n"+m.viewViewerFooter(), m.height)
+}
+
+func (m *model) viewViewerFooter() string {
+	keys := m.st.accent.Render("↑↓") + m.st.dim.Render(" scroll  ") +
+		m.st.accent.Render("q") + m.st.dim.Render(" close")
+
+	right := ""
+	switch {
+	case m.viewer.truncated:
+		right = m.st.danger.Render("first " + m.ui.formatSize(viewerReadCap) + " shown")
+	case len(m.viewer.lines) > 0:
+		// The line range, so a long file's scroll position is legible.
+		last := min(m.viewer.offset+m.viewerHeight(), len(m.viewer.lines))
+		right = m.st.dim.Render(fmt.Sprintf("%d–%d of %d", m.viewer.offset+1, last, len(m.viewer.lines)))
+	}
+
+	gap := m.width - lipgloss.Width(keys) - lipgloss.Width(right)
+	if gap < 1 {
+		return runewidth.Truncate(keys, max(m.width, 1), "")
+	}
+	return keys + strings.Repeat(" ", gap) + right
 }
 
 // viewScanning keeps the same chrome the browser has, as the mock does: the
@@ -223,14 +293,21 @@ func (m *model) viewBrand() string {
 // while browsing, and the root under way while scanning — the mock puts the same
 // breadcrumb in both states, which is what makes the scan read as the same
 // screen filling up rather than a different one.
+//
+// An accepted filter that is no longer being typed is shown here too, so that a
+// directory listing fewer rows than it holds is never a mystery.
 func (m *model) headerPath() string {
 	if m.scr == screenScanning {
 		return "scanning " + m.ui.scanPath
 	}
-	if m.currentDir != nil {
-		return m.currentDir.GetPath()
+	if m.currentDir == nil {
+		return ""
 	}
-	return ""
+	path := m.currentDir.GetPath()
+	if !m.filtering && m.filter != "" {
+		path += "  /" + m.filter
+	}
+	return path
 }
 
 // viewDiskLine is the volume gauge from the mock: how full the disk is that the
@@ -252,25 +329,28 @@ func (m *model) viewDiskLine() string {
 
 func (m *model) viewList() string {
 	lines := m.visibleLines()
+	items := m.items()
 
-	if len(m.rows) == 0 {
-		return padLines(m.st.dim.Render("  (empty)"), lines)
+	if len(items) == 0 {
+		empty := "  (empty)"
+		if m.filtered != nil {
+			// An active filter matching nothing is a different situation from an
+			// empty directory, and saying so is what stops it reading as a bug.
+			empty = "  no matches for “" + m.filter + "”"
+		}
+		return padLines(m.st.dim.Render(empty), lines)
 	}
 
 	// The window, and only the window, is rendered. A directory can hold tens of
 	// thousands of entries; building a string for all of them every frame is the
 	// cost this whole design exists to avoid.
-	end := min(m.offset+m.visibleRows(), len(m.rows))
+	end := min(m.offset+m.visibleRows(), len(items))
 
-	// The percentage is the entry's share of the parent directory total.
-	total := int64(0)
-	if m.currentDir != nil {
-		total = m.itemSize(m.currentDir)
-	}
+	total := m.rowScale()
 
 	var b strings.Builder
 	for i := m.offset; i < end; i++ {
-		b.WriteString(m.viewEntry(m.rows[i], i == m.cursor, total))
+		b.WriteString(m.viewEntry(items[i], i == m.cursor, total))
 		b.WriteByte('\n')
 	}
 	// The last entry can overrun a list height that is not a whole number of
@@ -354,13 +434,23 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		pctText = padLeft(runewidth.Truncate(formatPct(size, total), pctColWidth, ""), pctColWidth)
 	}
 
-	// The row is: gutter(1) + icon + size + gap(1) + name + pct. The gutter holds
-	// either the selection marker or a blank, so both variants are the same width.
+	// The optional columns are only drawn where they leave the name enough room to
+	// be worth reading. Asking for a column the terminal cannot fit and getting a
+	// four-character name back is not what the keypress meant, so the column simply
+	// does not appear — and toggleLabel says the state changed regardless.
+	extras := m.extraColumns(item)
+
+	// The row is: gutter(1) + icon + size + gap(1) + extras + name + pct. The gutter
+	// holds either the selection marker or a blank, so both variants are the same
+	// width.
 	const fixedCells = 2 // gutter + the gap between size and name
-	nameWidth := max(
-		m.width-runewidth.StringWidth(icon)-sizeColWidth-runewidth.StringWidth(pctText)-fixedCells,
-		minNameWidth,
-	)
+	rawNameWidth := m.width - runewidth.StringWidth(icon) - sizeColWidth -
+		runewidth.StringWidth(extras) - runewidth.StringWidth(pctText) - fixedCells
+	nameWidth := max(rawNameWidth, minNameWidth)
+	// Floored means the name column hit its minimum and the row no longer adds up
+	// to the terminal width — the selected branch clips it whole rather than
+	// composing it, so the width stays exact.
+	floored := rawNameWidth < minNameWidth
 
 	name := item.GetName()
 	if item.IsDir() {
@@ -381,14 +471,10 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	}
 	nameText := runewidth.FillRight(runewidth.Truncate(name, nameWidth, "…"), nameWidth)
 
-	plain := icon + sizeText + " " + nameText + pctText
+	plain := icon + sizeText + " " + extras + nameText + pctText
 
 	if selected {
-		// No box-shadow in a terminal: the mock's glow becomes a filled
-		// background plus a bold name and a bright marker. The marker is what
-		// survives --no-color, NO_COLOR and the mono theme.
-		return m.st.accent.Render("▌") +
-			m.st.selected.MaxWidth(max(m.width-1, 1)).Render(plain)
+		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored)
 	}
 
 	nameStyle := m.st.fileName
@@ -399,10 +485,58 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	case item.IsDir():
 		nameStyle, iconStyle = m.st.dirName, m.st.accent
 	}
+
+	// Under a filter, the runes the query matched are lit up so the reason a row is
+	// here is visible.
+	renderedName := nameStyle.Render(nameText)
+	if m.filter != "" {
+		renderedName = highlightMatch(nameText, m.filter, &nameStyle, &m.st.accent)
+	}
+
 	return " " + iconStyle.Render(icon) +
 		m.st.size.Render(sizeText) + " " +
-		nameStyle.Render(nameText) +
+		m.st.dim.Render(extras) +
+		renderedName +
 		m.st.pct.Render(pctText)
+}
+
+// viewSelectedRow draws the cursor row. No box-shadow in a terminal: the mock's
+// glow becomes a filled background, a bold name, and a bright marker — the marker
+// being what survives --no-color, NO_COLOR and the mono theme.
+//
+// With a filter on, the matched runes are lit up here too, composed from segments
+// that all carry the selection background so the row stays one block. When the
+// name column has been floored the row no longer adds up to the exact width, so it
+// is clipped whole rather than composed.
+func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored bool) string {
+	marker := m.st.accent.Render("▌")
+
+	if m.filter != "" && !floored {
+		return marker +
+			m.st.selected.Render(prefix) +
+			highlightMatch(nameText, m.filter, &m.st.selected, &m.st.selectedMatch) +
+			m.st.selected.Render(pctText)
+	}
+	return marker + m.st.selected.MaxWidth(max(m.width-1, 1)).Render(plain)
+}
+
+// extraColumns renders the optional item-count and mtime columns, in that order,
+// and nothing at all where they would not fit.
+func (m *model) extraColumns(item fs.Item) string {
+	out := ""
+	if m.ui.showItemCount && m.width >= minWidthForItemCount {
+		count := item.GetItemCount()
+		if item.IsDir() {
+			// A directory counts itself. Showing "1 item" for an empty directory is
+			// how gdu reads too, and it is not what anyone means by the column.
+			count--
+		}
+		out += padLeft(runewidth.Truncate(humanCount(count), countColWidth, ""), countColWidth) + " "
+	}
+	if m.ui.showMtime && m.width >= minWidthForMtime {
+		out += item.GetMtime().Format(mtimeLayout) + " "
+	}
+	return out
 }
 
 // tickFrame is the spinner frame for a row being removed. It runs off the same
@@ -415,39 +549,132 @@ func (m *model) tickFrame() string {
 	return m.frames[m.ticks%len(m.frames)]
 }
 
-type keyHint struct{ key, label string }
+// keyHint is one binding in the footer, and how readily it is given up when the
+// terminal is too narrow to show them all.
+type keyHint struct {
+	key   string
+	label string
+	// drop is the order hints are shed in: the highest goes first. Movement and the
+	// way out are never dropped; a key you cannot discover is one you do not have.
+	drop int
+}
 
 // The footer lists only keys that actually do something on the screen you are
 // on. An interface that advertises a binding it does not have is worse than one
 // that says nothing.
+//
+// Sorting costs one hint here rather than four, because the fields are asked for
+// only once s has been pressed — and then the footer explains nothing else.
 var (
 	browseKeys = []keyHint{
-		{"↑↓", "move"},
-		{"→", "open"},
-		{"←", "back"},
-		{"d", "trash"},
-		{"D", "delete"},
-		{"q", "quit"},
+		{key: "↑↓", label: "move"},
+		{key: "→", label: "open"},
+		{key: "←", label: "back"},
+		{key: "/", label: "filter", drop: 3},
+		{key: "v", label: "view", drop: 4},
+		{key: "s", label: "sort", drop: 2},
+		{key: "t", label: "cols", drop: 5},
+		{key: "d", label: "trash", drop: 1},
+		{key: "D", label: "delete", drop: 3},
+		{key: "r", label: "rescan", drop: 5},
+		{key: "q", label: "quit"},
+	}
+	// undoKey appears only when there is something to undo — see browseFooterKeys.
+	// It sits after delete, which is where the eye is after a delete.
+	undoKey = keyHint{key: "u", label: "undo", drop: 5}
+	// The whole footer becomes the menu: while a mode is on, nothing else is worth
+	// saying, and a mode nobody can see is a trap.
+	sortMenuKeys = []keyHint{
+		{key: "s", label: "size"},
+		{key: "n", label: "name"},
+		{key: "c", label: "count"},
+		{key: "m", label: "mtime"},
+		{key: "esc", label: "cancel"},
+	}
+	colMenuKeys = []keyHint{
+		{key: "a", label: "apparent"},
+		{key: "B", label: "relative"},
+		{key: "c", label: "count"},
+		{key: "m", label: "mtime"},
+		{key: "esc", label: "cancel"},
 	}
 	scanKeys = []keyHint{
-		{"q", "quit"},
+		{key: "q", label: "quit"},
 	}
 	confirmKeys = []keyHint{
-		{"←→", "choose"},
-		{"enter", "confirm"},
-		{"esc", "cancel"},
+		{key: "←→", label: "choose"},
+		{key: "enter", label: "confirm"},
+		{key: "esc", label: "cancel"},
 	}
 )
 
-func (m *model) viewFooter() string {
-	keys := browseKeys
-	switch m.scr {
-	case screenScanning:
-		keys = scanKeys
-	case screenConfirm:
-		keys = confirmKeys
-	case screenBrowse, screenError:
+// maxDropLevel is the number of shedding rounds fitKeys will run.
+const maxDropLevel = 5
+
+// fitKeys drops the least essential hints until the row fits. Truncating the
+// string instead would leave a hint cut in half, which reads as a rendering fault
+// rather than as a choice.
+func fitKeys(keys []keyHint, budget int) []keyHint {
+	for level := maxDropLevel; level > 0 && hintsWidth(keys) > budget; level-- {
+		kept := make([]keyHint, 0, len(keys))
+		for _, k := range keys {
+			if k.drop == 0 || k.drop < level {
+				kept = append(kept, k)
+			}
+		}
+		keys = kept
 	}
+	return keys
+}
+
+func hintsWidth(keys []keyHint) int {
+	width := 0
+	for i, k := range keys {
+		if i > 0 {
+			width += 2
+		}
+		width += runewidth.StringWidth(k.key) + 1 + runewidth.StringWidth(k.label)
+	}
+	return width
+}
+
+// browseFooterKeys is the browse hints, with undo shown only when there is
+// something to undo. Advertising a key that would do nothing is the same fault as
+// listing d before deletion existed — the footer promises only what it can keep.
+func (m *model) browseFooterKeys() []keyHint {
+	if m.lastTrashed == nil {
+		return browseKeys
+	}
+	keys := make([]keyHint, 0, len(browseKeys)+1)
+	for _, k := range browseKeys {
+		keys = append(keys, k)
+		if k.key == "D" {
+			keys = append(keys, undoKey)
+		}
+	}
+	return keys
+}
+
+func (m *model) viewFooter() string {
+	if m.filtering {
+		return m.viewFilterFooter()
+	}
+
+	keys := m.browseFooterKeys()
+	switch {
+	case m.scr == screenScanning:
+		keys = scanKeys
+	case m.scr == screenConfirm:
+		keys = confirmKeys
+	case m.sortPending:
+		keys = sortMenuKeys
+	case m.colPending:
+		keys = colMenuKeys
+	}
+
+	// The sort state and the status line share the right-hand side, and both are
+	// worth less than knowing which keys exist — so the hints get the room first.
+	keys = fitKeys(keys, max(m.width-minRightWidth, 0))
 
 	var plain, styled strings.Builder
 	for i, k := range keys {
@@ -464,11 +691,18 @@ func (m *model) viewFooter() string {
 		styled.WriteString(m.st.dim.Render(k.label))
 	}
 
-	// The right-hand side is whichever matters more right now: what just happened,
-	// or — when nothing has — how the list is sorted. A destructive action that
-	// reported nothing would be indistinguishable from one that silently failed.
+	// The right-hand side is whichever matters more right now: the mode you are in,
+	// then what just happened, then — when neither — how the list is sorted. A
+	// destructive action that reported nothing would be indistinguishable from one
+	// that silently failed.
 	right, rightStyle := "", m.st.dim
 	switch {
+	case m.sortPending:
+		// The keys alone would read as ordinary bindings. Naming the mode is what
+		// tells you the next keystroke means something different from usual.
+		right, rightStyle = "sort by…", m.st.accent
+	case m.colPending:
+		right, rightStyle = "toggle column…", m.st.accent
 	case m.status != "":
 		right = m.status
 		if m.statusIsError {
@@ -491,6 +725,25 @@ func (m *model) viewFooter() string {
 		return m.st.dim.Render(runewidth.Truncate(plain.String(), max(m.width, 1), ""))
 	}
 	return styled.String() + strings.Repeat(" ", gap) + rightStyle.Render(right)
+}
+
+// viewFilterFooter is the / input line: the query being typed on the left, and
+// how many of the directory's entries it matches on the right. The count is the
+// feedback that makes fuzzy typing legible — you can see the list narrowing.
+func (m *model) viewFilterFooter() string {
+	prompt := m.st.accent.Render("/") + m.st.dirName.Render(m.filter) + m.st.accent.Render("▏")
+
+	count := fmt.Sprintf("%d of %d", len(m.items()), len(m.rows))
+	if len(m.items()) == 0 {
+		count = "no matches"
+	}
+	right := m.st.dim.Render(count)
+
+	gap := m.width - lipgloss.Width(prompt) - lipgloss.Width(right)
+	if gap < 1 {
+		return runewidth.Truncate(prompt, max(m.width, 1), "")
+	}
+	return prompt + strings.Repeat(" ", gap) + right
 }
 
 func (m *model) sortLabel() string {

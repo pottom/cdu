@@ -48,11 +48,16 @@ type styles struct {
 	dirName  lipgloss.Style
 	fileName lipgloss.Style
 	selected lipgloss.Style
-	size     lipgloss.Style
-	pct      lipgloss.Style
-	dim      lipgloss.Style
-	accent   lipgloss.Style
-	danger   lipgloss.Style
+	// selectedMatch highlights filter matches on the cursor row. It carries the
+	// selection's background so the row stays one continuous block; only the
+	// foreground changes. Under no colour it underlines instead, so the match still
+	// shows against the reversed selection.
+	selectedMatch lipgloss.Style
+	size          lipgloss.Style
+	pct           lipgloss.Style
+	dim           lipgloss.Style
+	accent        lipgloss.Style
+	danger        lipgloss.Style
 
 	modal        lipgloss.Style
 	button       lipgloss.Style
@@ -64,14 +69,15 @@ func newStyles(p *palette, useColors bool) styles {
 	if !useColors {
 		plain := lipgloss.NewStyle()
 		return styles{
-			dirName:  plain.Bold(true),
-			fileName: plain,
-			selected: plain.Reverse(true),
-			size:     plain,
-			pct:      plain,
-			dim:      plain,
-			accent:   plain.Bold(true),
-			danger:   plain.Bold(true),
+			dirName:       plain.Bold(true),
+			fileName:      plain,
+			selected:      plain.Reverse(true),
+			selectedMatch: plain.Reverse(true).Underline(true),
+			size:          plain,
+			pct:           plain,
+			dim:           plain,
+			accent:        plain.Bold(true),
+			danger:        plain.Bold(true),
 
 			modal: plain.Border(lipgloss.RoundedBorder()).Padding(0, modalPadding),
 			// Without colour the focused button is told apart by its brackets and by
@@ -86,6 +92,10 @@ func newStyles(p *palette, useColors bool) styles {
 		fileName: lipgloss.NewStyle().Foreground(p.text),
 		selected: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#ffffff")).
+			Background(p.panel).
+			Bold(true),
+		selectedMatch: lipgloss.NewStyle().
+			Foreground(p.pink).
 			Background(p.panel).
 			Bold(true),
 		size:   lipgloss.NewStyle().Foreground(p.mint),
