@@ -38,6 +38,19 @@ func TestRowWidthsUnderTruecolor(t *testing.T) {
 		assert.Equal(t, width, lipgloss.Width(unselected),
 			"unselected row must fill exactly %d columns", width)
 
+		// A filter highlights matched runes in both the plain and the selected row,
+		// each composed from styled segments. That is the escape-blind path, so both
+		// must still measure exactly the terminal width. The query matches the
+		// synthetic names ("some-reasonably-long-file-name-…").
+		m.filter = "sml"
+		selMatch := m.viewRow(m.rows[0], true, total)
+		unselMatch := m.viewRow(m.rows[1], false, total)
+		assert.Equal(t, width, lipgloss.Width(selMatch),
+			"selected+highlighted row must fill exactly %d columns", width)
+		assert.Equal(t, width, lipgloss.Width(unselMatch),
+			"highlighted row must fill exactly %d columns", width)
+		m.filter = ""
+
 		// The bar line is drawn from styled cells too, so it is exposed to exactly
 		// the same escape-blind truncation bug as the row above it.
 		if m.linesPerEntry() > 1 {
@@ -68,7 +81,7 @@ func TestRowWidthsUnderTruecolor(t *testing.T) {
 func TestFrameHeight(t *testing.T) {
 	withProfile(t, termenv.TrueColor)
 
-	for _, scr := range []screen{screenBrowse, screenScanning, screenConfirm} {
+	for _, scr := range []screen{screenBrowse, screenScanning, screenConfirm, screenViewer} {
 		for _, width := range []int{40, 79, 80, 120} {
 			for _, height := range []int{1, 2, 3, 4, 5, 6, 11, 24, 50} {
 				m := benchModel(50)
@@ -81,6 +94,11 @@ func TestFrameHeight(t *testing.T) {
 				m.confirm = &confirmState{
 					item: m.rows[0], parent: m.currentDir,
 					act: actionDelete, requireTyping: true,
+				}
+				// A short file must pad and a long one must clip, just like the list.
+				m.viewer = &viewerState{
+					path:  "/some/very/long/path/to/a/file/that/does/not/fit.txt",
+					lines: []string{"one", "two", "three", "four", "five", "six", "seven"},
 				}
 				// With a disk the header is three lines, which is the case where the
 				// list height stops being a whole number of two-line entries.

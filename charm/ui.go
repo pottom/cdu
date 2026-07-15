@@ -38,8 +38,15 @@ type UI struct {
 	// path that belongs to no listed mount, the line is simply not drawn.
 	getter device.DevicesInfoGetter
 
-	noUnicode bool
-	noDelete  bool
+	noUnicode  bool
+	noDelete   bool
+	noViewFile bool
+	mouse      bool
+
+	// Optional columns, off by default and toggled with c and m.
+	showItemCount bool
+	showMtime     bool
+
 	sortBy    fs.SortBy
 	sortOrder fs.SortOrder
 }
@@ -91,6 +98,28 @@ func (ui *UI) SetNoDelete() {
 	ui.noDelete = true
 }
 
+// SetNoViewFile disables the file viewer (v), which then says it is disabled
+// rather than doing nothing.
+func (ui *UI) SetNoViewFile() {
+	ui.noViewFile = true
+}
+
+// SetMouse enables mouse reporting (--mouse). It is off by default so that
+// terminal text selection keeps working for anyone who does not ask for it.
+func (ui *UI) SetMouse() {
+	ui.mouse = true
+}
+
+// SetShowItemCount starts with the item-count column on (-C).
+func (ui *UI) SetShowItemCount() {
+	ui.showItemCount = true
+}
+
+// SetShowMTime starts with the mtime column on (-M).
+func (ui *UI) SetShowMTime() {
+	ui.showMtime = true
+}
+
 // rootPath is the absolute path the scan is rooted at, which is what the disk
 // line is resolved against.
 func (ui *UI) rootPath() string {
@@ -139,10 +168,16 @@ func (ui *UI) SetCollapsePath(bool) {}
 // program builds the Bubble Tea program. Tests drive it with injected input and
 // output so the loop can run without a TTY.
 func (ui *UI) program(opts ...tea.ProgramOption) *tea.Program {
-	return tea.NewProgram(newModel(ui), append([]tea.ProgramOption{
+	base := []tea.ProgramOption{
 		tea.WithAltScreen(),
 		tea.WithOutput(ui.output),
-	}, opts...)...)
+	}
+	if ui.mouse {
+		// Cell motion, not all motion: we only care about clicks and the wheel, and
+		// all-motion floods the loop with events for no benefit here.
+		base = append(base, tea.WithMouseCellMotion())
+	}
+	return tea.NewProgram(newModel(ui), append(base, opts...)...)
 }
 
 // StartUILoop runs the Bubble Tea program.

@@ -17,6 +17,11 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `confirm.go` — the destructive actions: trash, delete, empty, undo, rescan.
 - `modal.go` — the confirmation box, its buttons, and how it sheds lines to fit.
 - `protected.go` — the paths that need the word typed out.
+- `sort.go` — the two-key sort (`s` then a field) and the config default.
+- `toggle.go` — the column toggles (`a`/`B`/`c`/`m`) and the `t` menu.
+- `filter.go`, `fuzzy.go` — the `/` fuzzy filter and its match highlighting.
+- `viewer.go` — the `v` file pager, with the binary sniff and the read cap.
+- `mouse.go` — wheel-scroll and click-to-select, behind `--mouse`.
 - `style.go` — the palette and the resolved Lipgloss styles.
 - `util.go` — truncation, padding, formatting.
 
@@ -104,16 +109,65 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   not free disk space is the fact people most often do not know, so it is said
   every time.
 
+### Modes, filter and columns
+
+- **A mode swallows every key, including `q`.** The sort menu, the column menu and
+  the `/` filter all take the next keystroke whole: while typing a filter, `q` is a
+  letter, and mid-sort it is not a way out. An unknown key leaves the mode and says
+  so rather than being eaten silently.
+- **A mode nobody can see is a trap.** Whenever one is active the footer becomes its
+  menu and the right-hand side names it (`sort by…`, `toggle column…`, `/query`).
+- **Sorting is two keys** (`s` then a field), so the footer costs one hint, not
+  four. The field is shown in its natural direction first — biggest, most, newest,
+  names from A — because "sort by size, smallest first" is never what the keypress
+  meant. Pressing the field again flips it.
+- **`a` (apparent size) carries the sort.** Toggling the column re-points a
+  size-sort at the shown figure, or the list would be ordered by a number no longer
+  on screen. `B` (relative size) scales the bars to the largest row, measured once
+  per directory in `enterDir` — finding it in `View` would walk every row per frame.
+- **A column with no room says so.** On a narrow terminal `c`/`m` still flip, but
+  `toggleLabel` reports that there is no width to draw them, rather than looking
+  broken.
+
+### Filter, viewer, mouse
+
+- **The filter is a view, never a change to the tree.** `applyFilter` only rebuilds
+  `m.filtered`; a delete under a filter still finds and removes the real item, from
+  both lists. `m.items()` is the single accessor everything moves over. Navigating
+  clears the filter — it is per-directory.
+- **Match highlighting re-matches the laid-out cell**, not the original name, so the
+  lit runes line up with exactly what is on screen after truncation, and the cell's
+  width is unchanged. On the cursor row the highlight carries the selection
+  background so the row stays one block; `width_test.go` checks both.
+- **The viewer caps the read (1 MiB) and sniffs for binary (a NUL byte).** A pager
+  is for looking, not for loading a database into RAM or dumping mojibake. It reuses
+  the list's own windowed scrolling, so the exact-height rule holds; `q`/`esc`
+  closes rather than quits.
+- **The mouse is small and behind `--mouse`.** Wheel scrolls, left click selects,
+  a click on the already-selected row opens it (there is no terminal double-click).
+  No drag or hover — those cost the user their terminal's own text selection.
+
+### Colour and unicode
+
+- **`--no-color` drops colour, not attributes.** Bold, reverse and underline are the
+  state cues that replace colour, so they are meant to survive it — the NO_COLOR
+  spec forbids colour, not styling. `nocolor_test.go` allows them and forbids only
+  colour escapes; under the Ascii profile it forbids every escape.
+- **`--no-unicode` is scoped to the size bar, as in gdu** (its help says "for size
+  bar"). The bar becomes `#`/`-`; the marker, the rule and the wordmark stay
+  unicode, matching gdu rather than trying to be a full ASCII mode.
+
 ## Work Guidance
 
 Not yet implemented, and each pointing at `--classic` with an explicit error
 rather than failing silently: `ListDevices` (`-d`), `ReadFromStorage`
-(`--read-from-storage`). Sorting keys, mouse and the help/disks/top-files screens
-land in later slices. The footer advertises only bindings that exist — do not list
-a key before it works.
+(`--read-from-storage`). The disks/top-files/help screens land in later slices. The
+footer advertises only bindings that exist — do not list a key before it works, and
+`u` appears only when there is something to undo.
 
-Keys that act on the filesystem: `d` trash, `D` delete permanently, `e` empty a
-file, `u` undo the last trash, `r` rescan.
+Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
+menu, `t` column menu (or direct `a`/`B`/`c`/`m`), `v` view file, `d` trash,
+`D` delete permanently, `e` empty a file, `u` undo the last trash, `r` rescan.
 
 ## Verification
 
@@ -121,10 +175,12 @@ file, `u` undo the last trash, `r` rescan.
     go test ./charm/ -bench=. -benchtime=200x -run=XXX
 
 The suite covers navigation, the never-panic rule across seven terminal sizes
-(including 0×0 and 1×1), windowing under a 5000-row listing, exact frame height
-on every screen across 72 size combinations, exact row and bar widths under a
-forced truecolor profile, and a full Bubble Tea program run driven headlessly with
-injected input and output.
+(including 0×0 and 1×1), windowing under a 5000-row listing, exact frame height on
+every screen across 96 size combinations, exact row and bar widths (including
+filter highlighting) under a forced truecolor profile, the two-key sort and column
+toggles, the fuzzy matcher, the viewer's binary sniff and read cap, mouse
+scroll/click hit-testing, the colour/unicode audit across profiles, and a full
+Bubble Tea program run driven headlessly with injected input and output.
 
 `View()` costs ~0.28 ms and must stay flat as directory size grows — that number
 being identical at 100 and 10,000 rows is the standing proof the list is windowed.

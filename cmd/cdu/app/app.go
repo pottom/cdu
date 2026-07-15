@@ -448,6 +448,23 @@ func (a *App) getCharmOptions() []charm.Option {
 	if a.Flags.NoDelete {
 		opts = append(opts, func(ui *charm.UI) { ui.SetNoDelete() })
 	}
+	if a.Flags.NoViewFile {
+		opts = append(opts, func(ui *charm.UI) { ui.SetNoViewFile() })
+	}
+	if a.Flags.Mouse {
+		opts = append(opts, func(ui *charm.UI) { ui.SetMouse() })
+	}
+	if a.Flags.ShowItemCount {
+		opts = append(opts, func(ui *charm.UI) { ui.SetShowItemCount() })
+	}
+	if a.Flags.ShowMTime {
+		opts = append(opts, func(ui *charm.UI) { ui.SetShowMTime() })
+	}
+	if a.Flags.Sorting.Order != "" || a.Flags.Sorting.By != "" {
+		opts = append(opts, func(ui *charm.UI) {
+			ui.SetDefaultSorting(a.Flags.Sorting.By, a.Flags.Sorting.Order)
+		})
+	}
 	return opts
 }
 

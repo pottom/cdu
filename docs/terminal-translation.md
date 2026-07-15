@@ -105,6 +105,37 @@ with:
   sequence of single keypresses — the focus cannot even reach the button until
   `DELETE` is complete.
 
+## Filtering → fuzzy, but size still decides the order
+
+The mock has no filter; this is a translation of gdu's `/` search into something a
+little more forgiving. Typing `/` narrows the current directory by a fuzzy
+subsequence match — `nmd` finds `node_modules` — and the matched runes are lit up
+in the name so the reason a row survived is visible.
+
+The one real decision was ordering, because it fights the tool's reason to exist.
+Classic fuzzy find ranks by match score, which in a disk usage tool would let a
+well-spelled small file float above the large one it matches less tidily. So the
+fuzzy match decides only *what* is shown; the size sort still decides the *order*.
+Biggest first, always.
+
+The match is its own ~25-line subsequence matcher rather than a library: the
+candidate set is one directory, never the whole tree, so there is nothing to
+optimise and nothing to justify a dependency.
+
+## Viewing a file → a capped, sniffed pager
+
+`v` opens the selected file in a read-only pager. Two things a naive "read it and
+show it" gets wrong, and this does not:
+
+- **A multi-gigabyte file is not pulled into memory.** The read is capped at 1 MiB;
+  past that the footer says the view is truncated. A pager is for looking.
+- **A binary is not dumped as mojibake.** A NUL byte in the head — which text does
+  not have and a binary almost always does — refuses the file with a message.
+
+It reuses the list's own windowed scrolling rather than `bubbles/viewport`, for the
+same reason the list does: to keep the exact-height guarantee that stops the frame
+scrolling on its own.
+
 ## Scan cancellation → process exit
 
 Not a terminal limitation, but an engine one, and it shows up in the UI.

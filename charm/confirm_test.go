@@ -194,6 +194,26 @@ func (g *fakeGetter) GetDevicesInfo() (device.Devices, error) {
 	return device.Devices{{Name: "disk", MountPoint: "/", Size: g.size, Free: g.free}}, nil
 }
 
+// The undo hint appears only when there is something to undo. Advertising a key
+// that would do nothing is the same fault as listing d before deletion existed.
+func TestUndoHintAppearsOnlyWithSomethingToUndo(t *testing.T) {
+	m := benchModel(4)
+	m.width, m.height, m.haveSize = 120, 24, true
+	m.scr = screenBrowse
+
+	assert.NotContains(t, m.viewFooter(), "undo", "nothing has been trashed yet")
+
+	m.applyDelete(deleteDoneMsg{
+		item: m.rows[0], parent: m.currentDir, act: actionTrash,
+		entry: &trash.Entry{OriginalPath: m.rows[0].GetPath()},
+	})
+	assert.Contains(t, m.viewFooter(), "undo", "a trashed item makes undo real")
+
+	// Once it has been used, the hint goes again.
+	m.applyUndo(undoDoneMsg{entry: m.lastTrashed.entry, item: m.lastTrashed.item, parent: m.lastTrashed.parent})
+	assert.NotContains(t, m.viewFooter(), "undo", "nothing left to undo")
+}
+
 // Two overlapping removals would race to adjust the same parent's size, and there
 // is nothing to gain from letting them.
 func TestASecondDeleteIsRefusedWhileOneIsRunning(t *testing.T) {
