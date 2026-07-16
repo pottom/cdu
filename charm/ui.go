@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -51,10 +52,12 @@ type UI struct {
 	sortBy    fs.SortBy
 	sortOrder fs.SortOrder
 
-	// theme supplies every colour the renderer uses. It is always non-nil — the
-	// constructor plants the default — so no render path has to ask whether a
-	// theme was configured.
+	// theme supplies every colour the renderer uses. The constructor plants the
+	// default, so no render path has to ask whether a theme was configured.
 	theme theme.Theme
+	// themeWarn is what was wrong with the user's theme, shown on the status line
+	// once the interface is up. Empty when there was nothing to say.
+	themeWarn string
 }
 
 // Option customises the UI.
@@ -97,6 +100,23 @@ func UseOldSizeBar() Option {
 // WithDeviceGetter supplies the mount table the header's disk line is drawn from.
 func WithDeviceGetter(getter device.DevicesInfoGetter) Option {
 	return func(ui *UI) { ui.getter = getter }
+}
+
+// WithTheme resolves the config's theme block against --theme and installs the
+// result.
+//
+// A problem in either is carried into the interface as a status line rather than
+// printed and lost: cdu opens the alternate screen immediately, which would wipe
+// anything written to stderr before a user could read it.
+func WithTheme(cfg *theme.Config, name string) Option {
+	return func(ui *UI) {
+		th, err := theme.Resolve(cfg, name)
+		ui.theme = th
+		if err != nil {
+			// errors.Join separates with newlines, and the status line is one line.
+			ui.themeWarn = strings.ReplaceAll(err.Error(), "\n", "; ")
+		}
+	}
 }
 
 // SetNoDelete disables every destructive key. The keys stay bound and say they

@@ -19,6 +19,7 @@ import (
 	"github.com/pottom/cdu/build"
 	"github.com/pottom/cdu/charm"
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/device"
 	gfs "github.com/pottom/cdu/pkg/fs"
@@ -105,6 +106,14 @@ type Flags struct {
 	CollapsePath       bool     `yaml:"collapse-path"`
 	BrowseParentDirs   bool     `yaml:"browse-parent-dirs"`
 	Classic            bool     `yaml:"classic"`
+
+	// Theme colours the Charm interface. The classic interface keeps its own
+	// `style` block above and ignores this one.
+	Theme theme.Config `yaml:"theme"`
+	// ThemeName is --theme. It selects a preset and leaves any token overrides in
+	// Theme alone, so a flag on the command line does not throw away colours the
+	// user pinned by hand in their config.
+	ThemeName string `yaml:"-"`
 }
 
 // ShouldRunInNonInteractiveMode checks if the application should run in non-interactive mode
@@ -441,7 +450,10 @@ func (a *App) createUI() (UI, error) {
 }
 
 func (a *App) getCharmOptions() []charm.Option {
-	opts := []charm.Option{charm.WithDeviceGetter(a.Getter)}
+	opts := []charm.Option{
+		charm.WithDeviceGetter(a.Getter),
+		charm.WithTheme(&a.Flags.Theme, a.Flags.ThemeName),
+	}
 	if a.Flags.NoUnicode {
 		opts = append(opts, charm.UseOldSizeBar())
 	}

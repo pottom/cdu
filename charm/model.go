@@ -154,6 +154,10 @@ func newModel(ui *UI) *model {
 		st:      st,
 		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
+		// Anything wrong with the theme is said here rather than on stderr, which
+		// the alternate screen would wipe before it could be read.
+		status:        ui.themeWarn,
+		statusIsError: ui.themeWarn != "",
 	}
 }
 

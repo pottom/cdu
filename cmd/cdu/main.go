@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/pottom/cdu/cmd/cdu/app"
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/device"
 )
 
@@ -35,6 +36,35 @@ However HDDs work as well, but the performance gain is not so huge.
 	Args:         cobra.MaximumNArgs(1),
 	SilenceUsage: true,
 	RunE:         runE,
+}
+
+// themesCmd lists the bundled color themes.
+//
+// Root takes a directory as its argument, so `cdu themes` is ambiguous with a
+// directory actually called `themes` — a Hugo site has one, and cobra resolves
+// the subcommand first. Rather than leave that as a trap, the listing notices
+// and says how to scan it instead.
+var themesCmd = &cobra.Command{
+	Use:          "themes",
+	Short:        "List the bundled color themes",
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		// This is the one command where a broken theme config is the whole subject,
+		// and there is no alternate screen here to swallow the warning.
+		resolved, err := theme.Resolve(&af.Theme, af.ThemeName)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n\n", err)
+		}
+		if err := theme.List(cmd.OutOrStdout(), resolved.Name); err != nil {
+			return err
+		}
+		if info, err := os.Stat("themes"); err == nil && info.IsDir() {
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"\nNote: ./themes is a directory. To scan it rather than list themes, run `cdu ./themes`.")
+		}
+		return nil
+	},
 }
 
 // nolint:funlen // a lot of flags to initialize
@@ -80,6 +110,13 @@ func init() {
 	flags.BoolVarP(&af.NoColor, "no-color", "c", false, "Do not use colorized output")
 	flags.BoolVarP(&af.ShowItemCount, "show-item-count", "C", false, "Show number of items in directory")
 	flags.BoolVarP(&af.ShowMTime, "show-mtime", "M", false, "Show latest mtime of items in directory")
+	// Persistent, not local: `cdu themes --theme ember` has to reach the listing
+	// so it can mark which theme is in use, and a subcommand does not inherit
+	// root's local flags. No backticks in the usage string — cobra reads those as
+	// the flag's argument placeholder, and "see `cdu themes`" rendered the flag as
+	// `--theme cdu themes`.
+	rootCmd.PersistentFlags().StringVar(&af.ThemeName, "theme", "",
+		"Color theme for the interactive interface (run 'cdu themes' to see them)")
 	flags.BoolVar(&af.Classic, "classic", false, "Use gdu's original interface instead of the Charm one")
 	flags.BoolVarP(&af.NonInteractive, "non-interactive", "n", false, "Do not run in interactive mode")
 	flags.BoolVar(&af.Interactive, "interactive", false, "Force interactive mode even when output is not a TTY")
@@ -105,6 +142,8 @@ func init() {
 	flags.StringVar(&af.Until, "until", "", "Include files with mtime <= WHEN. WHEN accepts RFC3339 timestamp or date only YYYY-MM-DD")
 	flags.StringVar(&af.MaxAge, "max-age", "", "Include files with mtime no older than DURATION (e.g., 7d, 2h30m, 1y2mo)")
 	flags.StringVar(&af.MinAge, "min-age", "", "Include files with mtime at least DURATION old (e.g., 30d, 1w)")
+
+	rootCmd.AddCommand(themesCmd)
 
 	initConfig()
 	setDefaults()
