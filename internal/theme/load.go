@@ -154,9 +154,28 @@ func LoadUserThemes(dir string) []error {
 			continue
 		}
 		th.User = true
+		th.source = filepath.Join(dir, entry.Name())
 		userThemes[name] = th
 	}
 	return problems
+}
+
+// Dump returns a theme's file, comments and all.
+//
+// This is what makes shipping themes as files mean anything to someone holding
+// only the binary: without it, "copy one and edit it" would mean going to
+// GitHub. The comments are most of the value — they say what each token paints
+// and why the palette is what it is.
+func Dump(name string) ([]byte, error) {
+	if th, ok := userThemes[name]; ok {
+		// Yours is already a file; hand back what is actually on disk rather than a
+		// re-serialisation of it, which would lose the comments you wrote.
+		return os.ReadFile(th.source)
+	}
+	if _, ok := bundled()[name]; !ok {
+		return nil, unknownPreset(name)
+	}
+	return bundledFS.ReadFile(path.Join("themes", name+".yaml"))
 }
 
 // themeFileName reports the theme name for a directory entry, and whether it is

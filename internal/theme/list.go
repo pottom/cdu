@@ -3,6 +3,7 @@ package theme
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -58,7 +59,11 @@ func List(w io.Writer, current, dir string) error {
 	if dir != "" {
 		fmt.Fprintf(&b, "\nA theme of your own is a .yaml file in %s, named after the file.\n", dir)
 		if !anyUser {
-			b.WriteString("There are none there yet. `cdu --write-config` writes a config to copy from.\n")
+			// The themes are embedded in the binary, so say how to get one out.
+			// Otherwise "copy one and edit it" means a trip to GitHub.
+			b.WriteString("There are none there yet. To start from one of the above:\n\n")
+			fmt.Fprintf(&b, "  mkdir -p %s\n", dir)
+			fmt.Fprintf(&b, "  cdu themes dump charm > %s\n", filepath.Join(dir, "mine.yaml"))
 		}
 	}
 

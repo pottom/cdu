@@ -2,7 +2,11 @@
 # mocks in docs/design were drawn in it. Dark aubergine, pink to purple.
 #
 # A token names a role, not a hue. charm's accent happens to be pink; midnight's
-# is cyan. Copy this file to ~/.config/cdu/themes/mine.yaml to start your own.
+# is cyan.
+#
+# To start your own:
+#   cdu themes dump charm > ~/.config/cdu/themes/mine.yaml
+#   cdu --theme mine
 
 panel: "#241c34" # the cursor row's bed, and the modal's ground
 text: "#cfc6ef" # an ordinary file name, and the modal's body

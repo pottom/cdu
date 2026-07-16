@@ -26,11 +26,18 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "gdu [directory_to_scan]",
-	Short: "Pretty fast disk usage analyzer written in Go",
+	Use:   "cdu [directory_to_scan]",
+	Short: "Pretty fast disk usage analyzer with a Charm interface",
 	Long: `Pretty fast disk usage analyzer written in Go.
 
-Gdu is intended primarily for SSD disks where it can fully utilize parallel processing.
+cdu is a fork of gdu (https://github.com/dundee/gdu) by Daniel Milde. The disk
+analysis engine is gdu's, unchanged; what cdu adds is a new interactive interface
+built on the Charm stack, themes, and recoverable deletes. The non-interactive and
+JSON export modes are byte-for-byte identical to gdu's, and --classic gives you
+gdu's original interface. This is not the official gdu — report cdu's own bugs at
+https://github.com/pottom/cdu/issues.
+
+Intended primarily for SSD disks where it can fully utilize parallel processing.
 However HDDs work as well, but the performance gain is not so huge.
 `,
 	Args:         cobra.MaximumNArgs(1),
@@ -77,6 +84,28 @@ var themesCmd = &cobra.Command{
 	},
 }
 
+// themesDumpCmd prints a theme's file.
+//
+// It is what makes the bundled themes being files mean anything to someone
+// holding only the binary: they are embedded, so "copy one and edit it" would
+// otherwise mean a trip to GitHub.
+var themesDumpCmd = &cobra.Command{
+	Use:   "dump NAME",
+	Short: "Print a theme's YAML, to save as the start of your own",
+	Example: "  cdu themes dump charm > ~/.config/cdu/themes/mine.yaml\n" +
+		"  cdu --theme mine",
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		data, err := theme.Dump(args[0])
+		if err != nil {
+			return err
+		}
+		_, err = cmd.OutOrStdout().Write(data)
+		return err
+	},
+}
+
 // nolint:funlen // a lot of flags to initialize
 func init() {
 	af = &app.Flags{Style: app.Style{ProgressModal: app.ProgressModalOpts{ShowDiskProgressBar: true}}}
@@ -86,7 +115,7 @@ func init() {
 	flags.StringVarP(&af.LogFile, "log-file", "l", "/dev/null", "Path to a logfile")
 	flags.StringVarP(&af.OutputFile, "output-file", "o", "", "Export all info into file as JSON")
 	flags.StringVarP(&af.InputFile, "input-file", "f", "", "Import analysis from JSON file")
-	flags.IntVarP(&af.MaxCores, "max-cores", "m", runtime.NumCPU(), fmt.Sprintf("Set max cores that Gdu will use. %d cores available", runtime.NumCPU()))
+	flags.IntVarP(&af.MaxCores, "max-cores", "m", runtime.NumCPU(), fmt.Sprintf("Set max cores that cdu will use. %d cores available", runtime.NumCPU()))
 	flags.BoolVar(&af.SequentialScanning, "sequential", false, "Use sequential scanning (intended for rotating HDDs)")
 	flags.BoolVarP(&af.ShowVersion, "version", "v", false, "Print version")
 
@@ -155,6 +184,7 @@ func init() {
 	flags.StringVar(&af.MaxAge, "max-age", "", "Include files with mtime no older than DURATION (e.g., 7d, 2h30m, 1y2mo)")
 	flags.StringVar(&af.MinAge, "min-age", "", "Include files with mtime at least DURATION old (e.g., 30d, 1w)")
 
+	themesCmd.AddCommand(themesDumpCmd)
 	rootCmd.AddCommand(themesCmd)
 
 	initConfig()

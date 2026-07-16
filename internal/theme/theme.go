@@ -51,6 +51,12 @@ type Theme struct {
 	// from the binary. `cdu themes` says so, which is how you find out whether the
 	// file you just wrote actually loaded.
 	User bool `yaml:"-"`
+	// source is the file a user theme was read from, so `cdu themes dump` can hand
+	// it back. Empty for a bundled theme, which comes out of the embedded FS.
+	//
+	// Unexported: it is not a token and not configurable. tokens() walks by field
+	// *type*, so it never reaches for this one's address — which would panic.
+	source string
 
 	// Plain means the theme uses no colour, rendering through the same
 	// bold/reverse/underline path as --no-color.

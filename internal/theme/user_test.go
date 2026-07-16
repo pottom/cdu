@@ -171,7 +171,45 @@ func TestListSaysWhereToPutAThemeWhenYouHaveNone(t *testing.T) {
 
 	assert.Contains(t, out, "/somewhere/themes")
 	assert.Contains(t, out, "There are none there yet")
+	assert.Contains(t, out, "cdu themes dump charm", "it must say how to get one out of the binary")
 	assert.NotContains(t, out, "(yours)")
+}
+
+// The themes are embedded, so this is the only way someone holding the binary
+// can get one: without it, "copy one and edit it" means a trip to GitHub, and
+// shipping them as files buys nothing.
+func TestDumpReturnsTheBundledFileWithItsComments(t *testing.T) {
+	for _, name := range []string{"charm", "midnight", "ember", "phosphor", "mono"} {
+		data, err := Dump(name)
+		require.NoError(t, err, "%s must be dumpable", name)
+		assert.Contains(t, string(data), "#", "the comments are most of what a theme file is for")
+
+		// What comes out must go back in as the same theme.
+		th, err := parse(name, data)
+		require.NoError(t, err, "a dumped theme must parse")
+		bundledTheme, ok := Preset(name)
+		require.True(t, ok)
+		assert.Equal(t, bundledTheme, th, "%s must round-trip", name)
+	}
+}
+
+// Yours is already a file. Handing back a re-serialisation would lose the
+// comments you wrote in it.
+func TestDumpOfYourOwnThemeIsYourFileVerbatim(t *testing.T) {
+	body := "# my notes, which must survive\n" + completeTheme
+	dir := withThemeDir(t, map[string]string{"mine.yaml": body})
+	require.Empty(t, LoadUserThemes(dir))
+
+	data, err := Dump("mine")
+	require.NoError(t, err)
+	assert.Equal(t, body, string(data), "your file comes back byte for byte")
+}
+
+func TestDumpOfAnUnknownThemeSaysWhatThereIs(t *testing.T) {
+	_, err := Dump("nope")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown theme "nope"`)
+	assert.Contains(t, err.Error(), "charm", "the error must list what to type instead")
 }
 
 func errStrings(errs []error) []string {
