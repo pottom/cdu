@@ -88,11 +88,11 @@ func newStyles(t *theme.Theme, useColors bool) styles {
 			Foreground(lg(t.Dim)).
 			Background(lg(t.Panel)),
 		buttonFocus: lipgloss.NewStyle().
-			Foreground(lg(t.Selected)).
+			Foreground(lg(t.Ink)).
 			Background(lg(t.Dim)).
 			Bold(true),
 		buttonDanger: lipgloss.NewStyle().
-			Foreground(lg(t.Selected)).
+			Foreground(lg(t.Ink)).
 			Background(lg(t.Danger)).
 			Bold(true),
 	}

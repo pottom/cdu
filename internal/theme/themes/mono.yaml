@@ -1,0 +1,16 @@
+# mono — high-contrast greyscale that reads without relying on hue: for
+# colourblind readers, and the safe fallback on a terminal that cannot do better.
+#
+# It has no colour tokens, and that is the whole design. `plain` renders through
+# the same bold/reverse/underline path as --no-color, which conveys state through
+# attributes instead of hue.
+#
+# The obvious alternative was a set of greys. It cannot work: cdu does not paint
+# the background, so a fixed grey would have to be legible on both a white and a
+# black terminal, and no grey is. The attribute path already is legible on both —
+# and it is the one cdu audits in charm/nocolor_test.go. So mono is a tested path
+# given a name, not a new palette.
+#
+# Colour tokens here would be ignored, and cdu says so rather than dropping them
+# in silence.
+plain: true

@@ -22,14 +22,6 @@ func TestListNamesEveryThemeAndMarksTheCurrent(t *testing.T) {
 	assert.NotContains(t, out, "* charm", "only one theme is in use")
 }
 
-// The alias is shown as an alias. Previewing it as its own theme would read as a
-// fifth Catppuccin flavour when there are four.
-func TestListShowsTheAliasAsAnAlias(t *testing.T) {
-	var b strings.Builder
-	require.NoError(t, List(&b, ""))
-	assert.Contains(t, b.String(), "catppuccin             alias of catppuccin-mocha")
-}
-
 // mono has no colours to preview, and saying so is more useful than an empty gap.
 func TestListSaysMonoHasNoColour(t *testing.T) {
 	var b strings.Builder
@@ -45,8 +37,8 @@ func TestListFlagsTheLightThemes(t *testing.T) {
 	require.NoError(t, List(&b, ""))
 	out := b.String()
 
-	assert.Regexp(t, `catppuccin-latte\s+light`, out)
-	assert.Regexp(t, `catppuccin-mocha\s+dark`, out)
+	assert.Regexp(t, `daylight\s+light`, out)
+	assert.Regexp(t, `midnight\s+dark`, out)
 	assert.Contains(t, out, "light theme needs a light terminal")
 	assert.Contains(t, out, "--theme NAME", "it must say how to use one")
 }

@@ -64,9 +64,19 @@ type Theme struct {
 	Text Color `yaml:"text,omitempty"`
 	// Dir is a directory name, which reads brighter than a file.
 	Dir Color `yaml:"dir,omitempty"`
-	// Selected is the foreground on top of Panel and on filled buttons. It is a
-	// token of its own rather than "white" because on a light theme it is dark.
+	// Selected is the cursor row's name, drawn on Panel. It is a token of its own
+	// rather than "white" because on a light theme it is dark.
 	Selected Color `yaml:"selected,omitempty"`
+	// Ink is the foreground on a filled chip: the focused button (on Dim) and the
+	// destructive one (on Danger).
+	//
+	// It looks like Selected and in the charm theme it is the same white, which is
+	// exactly why it was worth separating. Selected sits on Panel, a *surface*,
+	// which is dark in a dark theme. Ink sits on Accent/Danger/Dim, which are
+	// *colours* — and on a pastel palette those are light even though the theme is
+	// dark, so the ink has to go dark with them. Catppuccin's red is #f38ba8;
+	// white-on-that is 1.3:1, an unreadable button.
+	Ink Color `yaml:"ink,omitempty"`
 	// Dim is percentages, key hints, and disabled buttons.
 	Dim Color `yaml:"dim,omitempty"`
 	// Accent is the cursor marker, the wordmark, the modal border and matched

@@ -138,9 +138,12 @@ func TestMonoThemeIsColourlessOnACapableTerminal(t *testing.T) {
 	original := lipgloss.ColorProfile()
 	defer lipgloss.SetColorProfile(original)
 
+	mono, ok := theme.Preset("mono")
+	require.True(t, ok)
+
 	for _, prof := range []termenv.Profile{termenv.ANSI256, termenv.TrueColor} {
 		lipgloss.SetColorProfile(prof)
-		m := auditModelWith(t, theme.Mono(), true /* useColors */, false)
+		m := auditModelWith(t, mono, true /* useColors */, false)
 		renderEachScreen(m, func(name, out string) {
 			if esc := colourEscape.FindString(out); esc != "" {
 				t.Errorf("prof=%v screen=%s: mono emitted a colour escape %q", prof, name, esc)

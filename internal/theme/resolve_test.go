@@ -15,9 +15,9 @@ func TestResolveDefaultsToCharm(t *testing.T) {
 }
 
 func TestResolvePreferstheFlagOverTheConfigPreset(t *testing.T) {
-	th, err := Resolve(&Config{Preset: "ember"}, "catppuccin-latte")
+	th, err := Resolve(&Config{Preset: "ember"}, "midnight")
 	require.NoError(t, err)
-	assert.Equal(t, "catppuccin-latte", th.Name)
+	assert.Equal(t, "midnight", th.Name)
 }
 
 // The flag chooses a preset; it does not throw away the tokens the user pinned
@@ -27,18 +27,20 @@ func TestFlagKeepsTheConfigsTokenOverrides(t *testing.T) {
 	th, err := Resolve(&cfg, "ember")
 	require.NoError(t, err)
 
+	ember, ok := Preset("ember")
+	require.True(t, ok)
 	assert.Equal(t, "ember", th.Name)
 	assert.Equal(t, Color("#00ff00"), th.Accent, "an explicit token survives --theme")
-	assert.Equal(t, Ember().Size, th.Size, "the rest comes from the named preset")
+	assert.Equal(t, ember.Size, th.Size, "the rest comes from the named preset")
 }
 
 // A typo must not stop cdu opening — the disk is still full either way. It is
 // reported, and the theme falls back.
 func TestUnknownThemeFallsBackAndSaysSo(t *testing.T) {
-	th, err := Resolve(&Config{}, "mocha")
+	th, err := Resolve(&Config{}, "midnite")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown theme "mocha"`)
-	assert.Contains(t, err.Error(), "catppuccin-mocha", "the error must list what to type instead")
+	assert.Contains(t, err.Error(), `unknown theme "midnite"`)
+	assert.Contains(t, err.Error(), "midnight", "the error must list what to type instead")
 	assert.Equal(t, Charm(), th, "an unusable name falls back to the default, still rendering")
 }
 
@@ -72,16 +74,18 @@ func TestColoursOnMonoAreReported(t *testing.T) {
 func TestConfigBlockParsesFromYAML(t *testing.T) {
 	var cfg Config
 	require.NoError(t, yaml.Unmarshal([]byte(
-		"preset: catppuccin-mocha\naccent: \"#ff0000\"\nbar-track: \"#111111\"\n"), &cfg))
+		"preset: midnight\naccent: \"#ff0000\"\nbar-track: \"#111111\"\n"), &cfg))
 
-	assert.Equal(t, "catppuccin-mocha", cfg.Preset)
+	assert.Equal(t, "midnight", cfg.Preset)
 	assert.Equal(t, Color("#ff0000"), cfg.Accent)
 	assert.Equal(t, Color("#111111"), cfg.BarTrack)
 
+	midnight, ok := Preset("midnight")
+	require.True(t, ok)
 	th, err := Resolve(&cfg, "")
 	require.NoError(t, err)
 	assert.Equal(t, Color("#ff0000"), th.Accent)
-	assert.Equal(t, CatppuccinMocha().Text, th.Text)
+	assert.Equal(t, midnight.Text, th.Text)
 }
 
 // --write-config marshals the resolved config back out. Name/Light/Plain are not

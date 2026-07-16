@@ -34,18 +34,11 @@ func List(w io.Writer, current string) error {
 		if name == current {
 			marker = "* "
 		}
-		// A theme whose own name differs from the key it was found under is an
-		// alias. Previewing it again would read as a fifth Catppuccin flavour when
-		// there are four, so it points at the real one instead.
-		if th.Name != name {
-			fmt.Fprintf(&b, "%s%-22s alias of %s\n", marker, name, th.Name)
-			continue
-		}
-		fmt.Fprintf(&b, "%s%-22s %-6s %s\n", marker, name, kind(&th), swatch(&th))
+		fmt.Fprintf(&b, "%s%-10s %-6s %s\n", marker, name, kind(&th), swatch(&th))
 	}
 
 	b.WriteString("\nA * marks the theme in use. Pick one with --theme NAME, or in your config:\n\n")
-	b.WriteString("  theme:\n    preset: catppuccin-mocha\n    accent: \"#f5c2e7\"\n")
+	b.WriteString("  theme:\n    preset: midnight\n    accent: \"#ff5fd1\"\n")
 	b.WriteString("\nOverridable tokens:\n")
 	fmt.Fprintf(&b, "  %s\n", strings.Join(TokenNames(), ", "))
 	b.WriteString("Colours are #rrggbb only, because the usage bar blends them.\n")
