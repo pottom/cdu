@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/pottom/cdu/cmd/cdu/app"
+	"github.com/pottom/cdu/internal/config"
 	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/device"
 )
@@ -71,7 +71,8 @@ var themesCmd = &cobra.Command{
 func init() {
 	af = &app.Flags{Style: app.Style{ProgressModal: app.ProgressModalOpts{ShowDiskProgressBar: true}}}
 	flags := rootCmd.Flags()
-	flags.StringVar(&af.CfgFile, "config-file", "", "Read config from file (default is $HOME/.gdu.yaml)")
+	flags.StringVar(&af.CfgFile, "config-file", "",
+		"Read config from file (default is $XDG_CONFIG_HOME/cdu/cdu.yaml, else ~/.config/cdu/cdu.yaml; falls back to a gdu config if there is one)")
 	flags.StringVarP(&af.LogFile, "log-file", "l", "/dev/null", "Path to a logfile")
 	flags.StringVarP(&af.OutputFile, "output-file", "o", "", "Export all info into file as JSON")
 	flags.StringVarP(&af.InputFile, "input-file", "f", "", "Import analysis from JSON file")
@@ -133,7 +134,8 @@ func init() {
 	flags.BoolVar(&af.NoDelete, "no-delete", false, "Do not allow deletions")
 	flags.BoolVar(&af.NoViewFile, "no-view-file", false, "Do not allow viewing file contents")
 	flags.BoolVar(&af.NoSpawnShell, "no-spawn-shell", false, "Do not allow spawning shell")
-	flags.BoolVar(&af.WriteConfig, "write-config", false, "Write current configuration to file (default is $HOME/.gdu.yaml)")
+	flags.BoolVar(&af.WriteConfig, "write-config", false,
+		"Write current configuration to ~/.config/cdu/cdu.yaml (or --config-file). This is also how you take over a gdu config")
 	flags.StringVar(
 		&af.Since, "since", "",
 		"Include files with mtime >= WHEN. WHEN accepts RFC3339 timestamp (e.g., 2025-08-11T01:00:00-07:00) "+
@@ -199,19 +201,27 @@ func setConfigFilePath() {
 }
 
 func setDefaultConfigFilePath() {
-	home, err := os.UserHomeDir()
+	path, notice, err := config.Resolve()
 	if err != nil {
 		configErr = err
 		return
 	}
+	af.CfgFile = path
+	af.ConfigNotice = notice
+}
 
-	path := filepath.Join(home, ".config", "gdu", "gdu.yaml")
-	if _, err := os.Stat(path); err == nil {
-		af.CfgFile = path
-		return
+// writeConfigPath is where --write-config writes, which is not necessarily where
+// the config was read from.
+//
+// When cdu falls back to a gdu config, reading it is the point and overwriting
+// it is not: --write-config is how you take your own copy, which is exactly what
+// the fallback notice promises. An explicit --config-file still wins, because
+// then the user named the file themselves.
+func writeConfigPath(command *cobra.Command) (string, error) {
+	if command.Flags().Changed("config-file") && af.CfgFile != "" {
+		return af.CfgFile, nil
 	}
-
-	af.CfgFile = filepath.Join(home, ".gdu.yaml")
+	return config.Path()
 }
 
 func runE(command *cobra.Command, args []string) error {
@@ -222,16 +232,24 @@ func runE(command *cobra.Command, args []string) error {
 	)
 
 	if af.WriteConfig {
+		// --write-config dumps the config actually in effect, so the theme block
+		// names the theme in use rather than being an empty map. Only the preset
+		// name: writing the twelve resolved tokens would pin today's palette into
+		// every config ever written, and a later cdu could never improve one.
+		if resolved, terr := theme.Resolve(&af.Theme, af.ThemeName); terr == nil {
+			af.Theme.Preset = resolved.Name
+		}
+
 		data, err := yaml.Marshal(af)
 		if err != nil {
 			return fmt.Errorf("error marshaling config file: %w", err)
 		}
-		if af.CfgFile == "" {
-			setDefaultConfigFilePath()
-		}
-		err = os.WriteFile(af.CfgFile, data, 0o600)
+		path, err := writeConfigPath(command)
 		if err != nil {
-			return fmt.Errorf("error writing config file %s: %w", af.CfgFile, err)
+			return err
+		}
+		if err := config.WriteFile(path, data); err != nil {
+			return fmt.Errorf("error writing config file %s: %w", path, err)
 		}
 	}
 

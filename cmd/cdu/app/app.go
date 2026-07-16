@@ -114,6 +114,10 @@ type Flags struct {
 	// Theme alone, so a flag on the command line does not throw away colours the
 	// user pinned by hand in their config.
 	ThemeName string `yaml:"-"`
+	// ConfigNotice is something worth saying about where the config came from —
+	// today, that it came from gdu's path. It reaches the user on the status line,
+	// since the alternate screen would wipe anything printed before it opens.
+	ConfigNotice string `yaml:"-"`
 }
 
 // ShouldRunInNonInteractiveMode checks if the application should run in non-interactive mode
@@ -453,6 +457,7 @@ func (a *App) getCharmOptions() []charm.Option {
 	opts := []charm.Option{
 		charm.WithDeviceGetter(a.Getter),
 		charm.WithTheme(&a.Flags.Theme, a.Flags.ThemeName),
+		charm.WithNotice(a.Flags.ConfigNotice),
 	}
 	if a.Flags.NoUnicode {
 		opts = append(opts, charm.UseOldSizeBar())

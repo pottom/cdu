@@ -55,9 +55,27 @@ type UI struct {
 	// theme supplies every colour the renderer uses. The constructor plants the
 	// default, so no render path has to ask whether a theme was configured.
 	theme theme.Theme
-	// themeWarn is what was wrong with the user's theme, shown on the status line
-	// once the interface is up. Empty when there was nothing to say.
-	themeWarn string
+
+	// notices are things to tell the user once the interface is up: a theme that
+	// could not be honoured, a config being read from gdu's path. They land on the
+	// status line rather than stderr because cdu opens the alternate screen
+	// immediately, and anything printed before that is wiped before it can be read.
+	notices []string
+	// noticeIsError is true when any notice is a complaint rather than a remark.
+	noticeIsError bool
+}
+
+func (ui *UI) addNotice(s string, isError bool) {
+	if s == "" {
+		return
+	}
+	ui.notices = append(ui.notices, s)
+	ui.noticeIsError = ui.noticeIsError || isError
+}
+
+// notice is every notice as one status line.
+func (ui *UI) notice() string {
+	return strings.Join(ui.notices, "; ")
 }
 
 // Option customises the UI.
@@ -114,9 +132,14 @@ func WithTheme(cfg *theme.Config, name string) Option {
 		ui.theme = th
 		if err != nil {
 			// errors.Join separates with newlines, and the status line is one line.
-			ui.themeWarn = strings.ReplaceAll(err.Error(), "\n", "; ")
+			ui.addNotice(strings.ReplaceAll(err.Error(), "\n", "; "), true)
 		}
 	}
+}
+
+// WithNotice adds a remark to show on the status line once the interface is up.
+func WithNotice(s string) Option {
+	return func(ui *UI) { ui.addNotice(s, false) }
 }
 
 // SetNoDelete disables every destructive key. The keys stay bound and say they
