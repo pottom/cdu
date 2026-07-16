@@ -39,6 +39,25 @@ type Theme struct {
 	// is not a colour and is never read from the config.
 	Name string `yaml:"-"`
 
+	// Light marks a theme drawn for a light terminal.
+	//
+	// cdu never paints the field: there is no background token, so the terminal's
+	// own background shows through, which is what keeps transparency and blur
+	// working for the people most likely to care about themes at all. The price is
+	// that a light theme on a dark terminal is unreadable, so `cdu themes` says
+	// which is which.
+	Light bool `yaml:"-"`
+
+	// Plain means the theme uses no colour, rendering through the same
+	// bold/reverse/underline path as --no-color.
+	//
+	// `mono` is defined this way rather than as a set of greys because no fixed
+	// grey is legible on both a light and a dark terminal, while the no-colour
+	// path is — it conveys state through attributes instead, and it is the path
+	// nocolor_test.go already audits. A Plain theme therefore has no tokens, and
+	// Missing does not apply to it.
+	Plain bool `yaml:"-"`
+
 	// Panel backs the modal and the cursor row.
 	Panel Color `yaml:"panel,omitempty"`
 	// Text is an ordinary file name and the modal's body.

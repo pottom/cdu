@@ -7,7 +7,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/device"
 )
@@ -24,8 +27,14 @@ var anyEscape = regexp.MustCompile("\x1b")
 // any screen.
 func auditModel(t *testing.T, useColors, noUnicode bool) *model {
 	t.Helper()
+	return auditModelWith(t, theme.Charm(), useColors, noUnicode)
+}
+
+func auditModelWith(t *testing.T, th theme.Theme, useColors, noUnicode bool) *model {
+	t.Helper()
 	ui := CreateUI(nil, useColors, false, false, false)
 	ui.noUnicode = noUnicode
+	ui.theme = th
 
 	m := newModel(ui)
 	m.width, m.height, m.haveSize = 90, 16, true
@@ -77,10 +86,9 @@ func TestNoColorEmitsNoColourEscapes(t *testing.T) {
 		for _, noUni := range []bool{false, true} {
 			m := auditModel(t, false /* useColors */, noUni)
 			renderEachScreen(m, func(name, out string) {
-				assert := colourEscape.FindString(out)
-				if assert != "" {
+				if esc := colourEscape.FindString(out); esc != "" {
 					t.Errorf("prof=%v noUni=%v screen=%s: colour escape %q leaked under --no-color",
-						prof, noUni, name, assert)
+						prof, noUni, name, esc)
 				}
 			})
 		}
@@ -120,6 +128,70 @@ func TestNoUnicodeKeepsTheBarAscii(t *testing.T) {
 			t.Errorf("screen=%s: block runes drawn under --no-unicode", name)
 		}
 	})
+}
+
+// mono is a theme with no tokens: it is meant to render through the same path as
+// --no-color, on a colour-capable terminal, with colour switched on everywhere
+// else. If that wiring is ever lost, mono silently becomes black-on-black rather
+// than colourless, so it is asserted rather than assumed.
+func TestMonoThemeIsColourlessOnACapableTerminal(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	defer lipgloss.SetColorProfile(original)
+
+	for _, prof := range []termenv.Profile{termenv.ANSI256, termenv.TrueColor} {
+		lipgloss.SetColorProfile(prof)
+		m := auditModelWith(t, theme.Mono(), true /* useColors */, false)
+		renderEachScreen(m, func(name, out string) {
+			if esc := colourEscape.FindString(out); esc != "" {
+				t.Errorf("prof=%v screen=%s: mono emitted a colour escape %q", prof, name, esc)
+			}
+		})
+	}
+}
+
+// A theme may change what a cell looks like, never how wide it is. Colour is not
+// a layout input, so every preset must lay out identically to the default, down
+// to the column — including mono, which renders through a different path
+// entirely and so is the one most able to drift.
+//
+// Comparing against charm rather than against the terminal width is deliberate:
+// it asks the question this test is for, and does not quietly re-litigate what
+// the layout should do in a terminal too narrow to hold its own floors.
+func TestEveryPresetLaysOutIdenticallyToTheDefault(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	defer lipgloss.SetColorProfile(original)
+	lipgloss.SetColorProfile(termenv.TrueColor)
+
+	sizes := []struct{ w, h int }{{40, 3}, {40, 24}, {90, 24}, {200, 24}}
+
+	for _, name := range theme.Names() {
+		th, ok := theme.Preset(name)
+		require.True(t, ok, "Names() offered %q but Preset() does not know it", name)
+
+		t.Run(name, func(t *testing.T) {
+			for _, size := range sizes {
+				ref := auditModelWith(t, theme.Charm(), true, false)
+				ref.width, ref.height = size.w, size.h
+				got := auditModelWith(t, th, true, false)
+				got.width, got.height = size.w, size.h
+
+				want := map[string][]int{}
+				renderEachScreen(ref, func(screen, out string) { want[screen] = lineWidths(out) })
+				renderEachScreen(got, func(screen, out string) {
+					assert.Equal(t, want[screen], lineWidths(out),
+						"screen=%s at %dx%d: %s lays out differently to charm", screen, size.w, size.h, name)
+				})
+			}
+		})
+	}
+}
+
+func lineWidths(out string) []int {
+	var widths []int
+	for line := range strings.SplitSeq(out, "\n") {
+		widths = append(widths, lipgloss.Width(line))
+	}
+	return widths
 }
 
 // The whole point of the exercise: no combination of profile and flags panics.

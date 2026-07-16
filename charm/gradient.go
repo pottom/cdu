@@ -78,7 +78,7 @@ func newBarRenderer(t *theme.Theme, useColors, noUnicode bool) barRenderer {
 	if noUnicode {
 		b.chars = asciiBarChars
 	}
-	if !useColors {
+	if !useColors || t.Plain {
 		return b
 	}
 

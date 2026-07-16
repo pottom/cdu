@@ -29,3 +29,13 @@ Third-party components
   github.com/gdamore/tcell         Apache-2.0
 
 Full dependency licenses are listed in the SBOM published with each release.
+
+Bundled color palettes
+----------------------
+
+cdu's `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato` and
+`catppuccin-mocha` themes use color values from the Catppuccin palette
+(https://github.com/catppuccin/palette), Copyright (c) 2021 Catppuccin,
+distributed under the MIT License. The values are transcribed from the
+project's published palette.json; no Catppuccin code is included, and cdu is
+not affiliated with or endorsed by the Catppuccin project.

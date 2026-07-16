@@ -16,8 +16,8 @@ import (
 func lg(c theme.Color) lipgloss.Color { return lipgloss.Color(string(c)) }
 
 // styles are the resolved Lipgloss styles for one theme. When colour is off
-// (--no-color, NO_COLOR, or a dumb terminal) every style degrades to plain text,
-// which is why state is never conveyed by colour alone.
+// (--no-color, NO_COLOR, a dumb terminal, or the mono theme) every style
+// degrades to plain text, which is why state is never conveyed by colour alone.
 type styles struct {
 	dirName  lipgloss.Style
 	fileName lipgloss.Style
@@ -40,7 +40,7 @@ type styles struct {
 }
 
 func newStyles(t *theme.Theme, useColors bool) styles {
-	if !useColors {
+	if !useColors || t.Plain {
 		plain := lipgloss.NewStyle()
 		return styles{
 			dirName:       plain.Bold(true),
