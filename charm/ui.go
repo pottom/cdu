@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/device"
 	"github.com/pottom/cdu/pkg/fs"
@@ -49,6 +50,11 @@ type UI struct {
 
 	sortBy    fs.SortBy
 	sortOrder fs.SortOrder
+
+	// theme supplies every colour the renderer uses. It is always non-nil — the
+	// constructor plants the default — so no render path has to ask whether a
+	// theme was configured.
+	theme theme.Theme
 }
 
 // Option customises the UI.
@@ -75,6 +81,7 @@ func CreateUI(
 		linkedItems: make(fs.HardLinkedItems, 10),
 		sortBy:      fs.SortBySize,
 		sortOrder:   fs.SortDesc,
+		theme:       theme.Charm(),
 	}
 	for _, o := range opts {
 		o(ui)

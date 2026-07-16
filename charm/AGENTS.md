@@ -44,8 +44,11 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - **No colour-only meaning.** Selection also carries a `▌` marker; read errors and
   hard links carry glyphs. State must survive `--no-color`, `NO_COLOR` and the
   `mono` theme.
-- **Colours come from the palette struct**, never from a literal in the render
-  path. `style.go` is the seed of the theme system.
+- **Colours come from the active `theme.Theme`**, never from a literal in the
+  render path — `lg()` in `style.go` is the only door they come through. Tokens
+  name a role, not a hue: `Accent`, not `pink`. The charm theme's accent happens
+  to be pink; catppuccin-latte's is not, and a renderer reaching for `pink` would
+  be telling the truth in exactly one theme.
 - **The Charm UI owns the terminal exclusively.** Nothing else may attach a reader
   to it. `cmd/cdu/main.go` creates the tcell screen and tview application *only*
   for `--classic`; when both existed at once they raced Bubble Tea for stdin and

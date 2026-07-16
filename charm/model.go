@@ -144,8 +144,7 @@ func newModel(ui *UI) *model {
 	}
 	sp := spinner.New()
 	sp.Spinner = spinner.Spinner{Frames: frames, FPS: time.Second / 8}
-	p := charmPalette()
-	st := newStyles(p, ui.UseColors)
+	st := newStyles(&ui.theme, ui.UseColors)
 	sp.Style = st.accent
 
 	return &model{
@@ -153,7 +152,7 @@ func newModel(ui *UI) *model {
 		spinner: sp,
 		frames:  frames,
 		st:      st,
-		bar:     newBarRenderer(p, ui.UseColors, ui.noUnicode),
+		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
 	}
 }

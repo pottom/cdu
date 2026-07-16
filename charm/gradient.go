@@ -7,6 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/termenv"
+
+	"github.com/pottom/cdu/internal/theme"
 )
 
 // The design draws the usage bar as a CSS linear-gradient. A terminal cannot
@@ -68,7 +70,7 @@ type barRenderer struct {
 	track lipgloss.Style
 }
 
-func newBarRenderer(p *palette, useColors, noUnicode bool) barRenderer {
+func newBarRenderer(t *theme.Theme, useColors, noUnicode bool) barRenderer {
 	b := barRenderer{
 		chars: unicodeBarChars,
 		mode:  barPlain,
@@ -80,10 +82,12 @@ func newBarRenderer(p *palette, useColors, noUnicode bool) barRenderer {
 		return b
 	}
 
-	b.from = mustColor(string(p.pink))
-	b.to = mustColor(string(p.purple))
-	b.solid = lipgloss.NewStyle().Foreground(p.pink)
-	b.track = lipgloss.NewStyle().Foreground(p.barTrack)
+	b.from = mustColor(string(t.BarFrom))
+	b.to = mustColor(string(t.BarTo))
+	// Below truecolor the bar is a solid fill of the gradient's own starting
+	// colour, so the two paths are recognisably the same element.
+	b.solid = lipgloss.NewStyle().Foreground(lg(t.BarFrom))
+	b.track = lipgloss.NewStyle().Foreground(lg(t.BarTrack))
 
 	b.mode = barSolid
 	if lipgloss.ColorProfile() == termenv.TrueColor {

@@ -8,7 +8,16 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/pottom/cdu/internal/theme"
 )
+
+// testTheme is the default preset, addressable for the renderers that take a
+// pointer to one.
+func testTheme() *theme.Theme {
+	th := theme.Charm()
+	return &th
+}
 
 // withProfile forces a colour profile for the duration of a test. Without this
 // the test process — which has no TTY — makes Lipgloss emit no escapes at all,
@@ -21,7 +30,7 @@ func withProfile(t *testing.T, p termenv.Profile) {
 }
 
 func TestBarModeFollowsColorProfile(t *testing.T) {
-	p := charmPalette()
+	p := testTheme()
 
 	withProfile(t, termenv.TrueColor)
 	assert.Equal(t, barGradient, newBarRenderer(p, true, false).mode,
@@ -46,7 +55,7 @@ func TestBarWidthIsExact(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			withProfile(t, profile)
-			b := newBarRenderer(charmPalette(), true, false)
+			b := newBarRenderer(testTheme(), true, false)
 
 			for _, width := range []int{1, 2, 3, 7, 20, 60} {
 				for _, frac := range []float64{0, 0.01, 0.25, 0.5, 0.999, 1} {
@@ -60,7 +69,7 @@ func TestBarWidthIsExact(t *testing.T) {
 
 func TestBarDegenerateInputs(t *testing.T) {
 	withProfile(t, termenv.TrueColor)
-	b := newBarRenderer(charmPalette(), true, false)
+	b := newBarRenderer(testTheme(), true, false)
 
 	assert.Empty(t, b.render(0.5, 0), "zero width renders nothing")
 	assert.Empty(t, b.render(0.5, -3), "negative width renders nothing")
@@ -77,7 +86,7 @@ func TestBarDegenerateInputs(t *testing.T) {
 // it away to an empty bar would read as "this is 0 bytes", which is a lie.
 func TestBarNeverRoundsAwayANonzeroShare(t *testing.T) {
 	withProfile(t, termenv.Ascii)
-	b := newBarRenderer(charmPalette(), true, false)
+	b := newBarRenderer(testTheme(), true, false)
 
 	assert.Equal(t, 1, b.filledCells(0.0001, 20))
 	assert.Equal(t, 20, b.filledCells(1, 20), "a full share fills every cell")
@@ -86,11 +95,11 @@ func TestBarNeverRoundsAwayANonzeroShare(t *testing.T) {
 func TestBarPlainAndAsciiCharacters(t *testing.T) {
 	withProfile(t, termenv.TrueColor)
 
-	plain := newBarRenderer(charmPalette(), false, false)
+	plain := newBarRenderer(testTheme(), false, false)
 	assert.Equal(t, "█████░░░░░", plain.render(0.5, 10),
 		"--no-color keeps the blocks but drops the colour")
 
-	ascii := newBarRenderer(charmPalette(), false, true)
+	ascii := newBarRenderer(testTheme(), false, true)
 	assert.Equal(t, "#####-----", ascii.render(0.5, 10),
 		"--no-unicode must not emit block runes")
 }
@@ -99,7 +108,7 @@ func TestBarPlainAndAsciiCharacters(t *testing.T) {
 // the thing the eye is meant to see: distinct colours along the filled run.
 func TestGradientColoursEveryCellDifferently(t *testing.T) {
 	withProfile(t, termenv.TrueColor)
-	b := newBarRenderer(charmPalette(), true, false)
+	b := newBarRenderer(testTheme(), true, false)
 
 	out := b.render(1, 12)
 	require.Contains(t, out, "\x1b[", "truecolor bar must carry escapes")
@@ -112,11 +121,11 @@ func TestGradientColoursEveryCellDifferently(t *testing.T) {
 	}
 	assert.Greater(t, len(seen), 8, "a 12-cell bar should show a spread of colours, got %d", len(seen))
 
-	// The endpoints are the palette's, not something drifted by the blend.
+	// The endpoints are the theme's, not something drifted by the blend.
 	first := b.cellStyle(0, 12).GetForeground()
 	last := b.cellStyle(11, 12).GetForeground()
-	assert.Equal(t, strings.ToLower(string(charmPalette().pink)), strings.ToLower(hexOf(first)))
-	assert.Equal(t, strings.ToLower(string(charmPalette().purple)), strings.ToLower(hexOf(last)))
+	assert.Equal(t, strings.ToLower(string(theme.Charm().BarFrom)), strings.ToLower(hexOf(first)))
+	assert.Equal(t, strings.ToLower(string(theme.Charm().BarTo)), strings.ToLower(hexOf(last)))
 }
 
 func hexOf(c lipgloss.TerminalColor) string {
