@@ -50,13 +50,23 @@ var themesCmd = &cobra.Command{
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		// This is the one command where a broken theme config is the whole subject,
-		// and there is no alternate screen here to swallow the warning.
+		// This is the one command where a broken theme is the whole subject, and
+		// there is no alternate screen here to swallow the warning.
+		for _, problem := range af.ThemeProblems {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", problem)
+		}
 		resolved, err := theme.Resolve(&af.Theme, af.ThemeName)
 		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n\n", err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
 		}
-		if err := theme.List(cmd.OutOrStdout(), resolved.Name); err != nil {
+		// With no home directory there is nowhere to point someone at, so the
+		// listing simply does not offer. It is not worth an error: the themes above
+		// it are the answer they came for.
+		dir, dirErr := config.ThemeDir()
+		if dirErr != nil {
+			dir = ""
+		}
+		if err := theme.List(cmd.OutOrStdout(), resolved.Name, dir); err != nil {
 			return err
 		}
 		if info, err := os.Stat("themes"); err == nil && info.IsDir() {
@@ -148,7 +158,25 @@ func init() {
 	rootCmd.AddCommand(themesCmd)
 
 	initConfig()
+	initUserThemes()
 	setDefaults()
+}
+
+// initUserThemes adds the themes in ~/.config/cdu/themes.
+//
+// A broken one is reported and skipped, never fatal: it is somebody's
+// half-finished theme, not a reason to refuse to show them their disk. The
+// report reaches the interactive interface on its status line, and `cdu themes`
+// prints it to stderr — which is where you look when the theme you just wrote
+// did not appear.
+func initUserThemes() {
+	dir, err := config.ThemeDir()
+	if err != nil {
+		return
+	}
+	for _, problem := range theme.LoadUserThemes(dir) {
+		af.ThemeProblems = append(af.ThemeProblems, problem.Error())
+	}
 }
 
 func initConfig() {

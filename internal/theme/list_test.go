@@ -12,7 +12,7 @@ import (
 
 func TestListNamesEveryThemeAndMarksTheCurrent(t *testing.T) {
 	var b strings.Builder
-	require.NoError(t, List(&b, "ember"))
+	require.NoError(t, List(&b, "ember", ""))
 	out := b.String()
 
 	for _, name := range Names() {
@@ -25,7 +25,7 @@ func TestListNamesEveryThemeAndMarksTheCurrent(t *testing.T) {
 // mono has no colours to preview, and saying so is more useful than an empty gap.
 func TestListSaysMonoHasNoColour(t *testing.T) {
 	var b strings.Builder
-	require.NoError(t, List(&b, ""))
+	require.NoError(t, List(&b, "", ""))
 	assert.Regexp(t, `mono\s+any\s+\(no colour\)`, b.String())
 }
 
@@ -33,7 +33,7 @@ func TestListSaysMonoHasNoColour(t *testing.T) {
 // it and what each theme expects of the terminal.
 func TestListSaysWhatEachThemeExpects(t *testing.T) {
 	var b strings.Builder
-	require.NoError(t, List(&b, ""))
+	require.NoError(t, List(&b, "", ""))
 	out := b.String()
 
 	assert.Regexp(t, `midnight\s+dark`, out)
@@ -54,7 +54,7 @@ func TestListStaysUsableWithoutColour(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 
 	var b strings.Builder
-	require.NoError(t, List(&b, "charm"))
+	require.NoError(t, List(&b, "charm", ""))
 	out := b.String()
 
 	assert.NotContains(t, out, "\x1b", "no escape may reach a dumb terminal")
@@ -66,7 +66,7 @@ func TestListStaysUsableWithoutColour(t *testing.T) {
 // what the config actually accepts.
 func TestListDocumentsTheRealTokens(t *testing.T) {
 	var b strings.Builder
-	require.NoError(t, List(&b, ""))
+	require.NoError(t, List(&b, "", ""))
 
 	for _, token := range TokenNames() {
 		assert.Contains(t, b.String(), token)

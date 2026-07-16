@@ -14,30 +14,39 @@ import (
 // 80-column terminal.
 const swatchCells = 10
 
-// List writes the bundled themes with a preview of each. The preview is the
-// point: a name is not a colour, and the whole reason to run this is to see
-// them.
+// List writes every theme with a preview of each. The preview is the point: a
+// name is not a colour, and the whole reason to run this is to see them.
+//
+// dir is the user's theme directory, named so someone can go and put a theme in
+// it; pass "" if it could not be worked out.
 //
 // It degrades with the terminal exactly as the interface does — on a dumb
 // terminal or under --no-color, Lipgloss emits nothing and the listing is a
 // plain table, which is still useful, because it still says what to type.
-func List(w io.Writer, current string) error {
+func List(w io.Writer, current, dir string) error {
 	var b strings.Builder
 
-	var anyLight bool
+	var anyLight, anyUser bool
 
-	b.WriteString("Bundled themes:\n\n")
+	b.WriteString("Themes:\n\n")
 	for _, name := range Names() {
 		th, ok := Preset(name)
 		if !ok {
 			continue
 		}
 		anyLight = anyLight || th.Light
+		anyUser = anyUser || th.User
 		marker := "  "
 		if name == current {
 			marker = "* "
 		}
-		fmt.Fprintf(&b, "%s%-10s %-6s %s\n", marker, name, kind(&th), swatch(&th))
+		// A theme of your own is marked, because the question this listing answers
+		// for someone who just wrote one is "did it load?".
+		origin := ""
+		if th.User {
+			origin = "  (yours)"
+		}
+		fmt.Fprintf(&b, "%s%-10s %-6s %s%s\n", marker, name, kind(&th), swatch(&th), origin)
 	}
 
 	b.WriteString("\nA * marks the theme in use. Pick one with --theme NAME, or in your config:\n\n")
@@ -45,6 +54,13 @@ func List(w io.Writer, current string) error {
 	b.WriteString("\nOverridable tokens:\n")
 	fmt.Fprintf(&b, "  %s\n", strings.Join(TokenNames(), ", "))
 	b.WriteString("Colours are #rrggbb only, because the usage bar blends them.\n")
+
+	if dir != "" {
+		fmt.Fprintf(&b, "\nA theme of your own is a .yaml file in %s, named after the file.\n", dir)
+		if !anyUser {
+			b.WriteString("There are none there yet. `cdu --write-config` writes a config to copy from.\n")
+		}
+	}
 
 	// Only say this when something above it is light. No bundled theme is, since
 	// daylight was dropped, but a theme of your own can be.

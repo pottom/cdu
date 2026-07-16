@@ -118,6 +118,9 @@ type Flags struct {
 	// today, that it came from gdu's path. It reaches the user on the status line,
 	// since the alternate screen would wipe anything printed before it opens.
 	ConfigNotice string `yaml:"-"`
+	// ThemeProblems are theme files in the user's theme directory that could not
+	// be read. They are warnings, not errors: cdu opens regardless, without them.
+	ThemeProblems []string `yaml:"-"`
 }
 
 // ShouldRunInNonInteractiveMode checks if the application should run in non-interactive mode
@@ -458,6 +461,7 @@ func (a *App) getCharmOptions() []charm.Option {
 		charm.WithDeviceGetter(a.Getter),
 		charm.WithTheme(&a.Flags.Theme, a.Flags.ThemeName),
 		charm.WithNotice(a.Flags.ConfigNotice),
+		charm.WithWarnings(a.Flags.ThemeProblems...),
 	}
 	if a.Flags.NoUnicode {
 		opts = append(opts, charm.UseOldSizeBar())

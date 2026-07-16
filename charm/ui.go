@@ -142,6 +142,17 @@ func WithNotice(s string) Option {
 	return func(ui *UI) { ui.addNotice(s, false) }
 }
 
+// WithWarnings adds complaints to show on the status line. Unlike a notice these
+// are things the user asked for and did not get — a theme file of theirs that
+// would not load — so they are coloured as errors.
+func WithWarnings(warnings ...string) Option {
+	return func(ui *UI) {
+		for _, w := range warnings {
+			ui.addNotice(w, true)
+		}
+	}
+}
+
 // SetNoDelete disables every destructive key. The keys stay bound and say they
 // are disabled: a key that silently does nothing reads as a broken interface.
 func (ui *UI) SetNoDelete() {

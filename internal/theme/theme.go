@@ -47,6 +47,11 @@ type Theme struct {
 	// which is which.
 	Light bool `yaml:"-"`
 
+	// User marks a theme that came from the user's theme directory rather than
+	// from the binary. `cdu themes` says so, which is how you find out whether the
+	// file you just wrote actually loaded.
+	User bool `yaml:"-"`
+
 	// Plain means the theme uses no colour, rendering through the same
 	// bold/reverse/underline path as --no-color.
 	//

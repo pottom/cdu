@@ -136,6 +136,55 @@ It reuses the list's own windowed scrolling rather than `bubbles/viewport`, for 
 same reason the list does: to keep the exact-height guarantee that stops the frame
 scrolling on its own.
 
+## The theme's background → the terminal's own
+
+The mocks paint a dark aubergine field behind everything. cdu does not paint it:
+there is no background token, and the terminal's own background shows through.
+
+Painting it is possible but costs the thing people actually want from a theme.
+A terminal background is the user's choice, often transparent or blurred, and the
+sort of person who picks a theme is exactly the sort who set that up. Filling it
+would also mean every style carrying an explicit background — an inner `\x1b[0m`
+resets the outer one, so a background cannot simply be wrapped around a composed
+frame.
+
+The consequence is a rule: **a light theme needs a light terminal.** `Theme.Light`
+records which are which and `cdu themes` says so. The bundled set is all dark
+after `daylight` was dropped, which leaves `mono` — legible on any background,
+because it uses no colour at all — as the only thing a light-terminal user has.
+That is a real gap against the brief, and `TestNoBundledThemeIsLight` records it
+rather than leaving it to be rediscovered.
+
+## `mono` → the absence of colour, not a palette of greys
+
+The brief asks for "high-contrast greyscale that reads without relying on hue".
+The obvious reading — a theme whose tokens are all greys — cannot work here.
+
+Because cdu does not paint the background (above), a fixed grey would have to be
+legible on both a white and a black terminal. No grey is. The `--no-color` path
+already solves this by conveying state through bold, reverse and underline
+instead of hue, it is legible on any background, and `charm/nocolor_test.go`
+already audits it.
+
+So `mono` is that path with a name on it: `plain: true`, no tokens. `--theme mono`
+and `--no-color` render identically, which is one code path and one audit rather
+than two.
+
+## Colour that means something → checked, not eyeballed
+
+Not a terminal limitation — a consequence of having more than one palette.
+
+A token pairing that works in one theme can be unreadable in another, and it will
+not be noticed, because the failure is a legible-looking screen in a theme nobody
+on the team runs. `Selected` and `Ink` are both "the bright one" and are the same
+white in charm; on a palette whose danger colour is *light*, that white landed on
+it at 1.3:1 and the delete button vanished — in a modal, on one theme.
+
+`internal/theme/contrast_test.go` checks every foreground/background pair that
+`newStyles` actually composes, on every theme, at WCAG AA for bold text (3:1). It
+found four real problems the first time it ran. Adding a theme cannot skip it, and
+composing a new pairing in `style.go` means adding it there.
+
 ## Scan cancellation → process exit
 
 Not a terminal limitation, but an engine one, and it shows up in the UI.

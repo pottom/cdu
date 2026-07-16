@@ -2,8 +2,12 @@ package theme
 
 import (
 	"embed"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -109,20 +113,91 @@ func parse(name string, data []byte) (Theme, error) {
 	return th, nil
 }
 
+// userThemes are themes loaded from the user's theme directory. It is written
+// once by LoadUserThemes during startup, before anything renders, and read-only
+// after — the same shape as the rest of this program's configuration.
+var userThemes = map[string]Theme{}
+
+// LoadUserThemes reads themes from dir, where a .yaml (or .yml) file is a theme
+// named after itself. A theme of yours with a bundled name replaces it, so you
+// can keep `charm` and mean your charm.
+//
+// Every error is returned and that one file is skipped. This is the opposite of
+// the bundled loader's panic, and deliberately: a bundled theme is part of the
+// binary and a broken one is a corrupt build, while these are somebody's
+// half-finished theme — not a reason to refuse to show them their disk.
+//
+// A missing directory is not an error. Most people will never make one.
+func LoadUserThemes(dir string) []error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return []error{fmt.Errorf("reading %s: %w", dir, err)}
+	}
+
+	var problems []error
+	for _, entry := range entries {
+		name, ok := themeFileName(entry)
+		if !ok {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			problems = append(problems, fmt.Errorf("%s: %w", entry.Name(), err))
+			continue
+		}
+		th, err := parse(name, data)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("%s: %w", entry.Name(), err))
+			continue
+		}
+		th.User = true
+		userThemes[name] = th
+	}
+	return problems
+}
+
+// themeFileName reports the theme name for a directory entry, and whether it is
+// a theme file at all. Both .yaml and .yml are taken: half the world writes one
+// and half the other, and a theme that silently never appeared would be a
+// miserable thing to debug.
+func themeFileName(entry fs.DirEntry) (string, bool) {
+	if entry.IsDir() {
+		return "", false
+	}
+	for _, ext := range []string{".yaml", ".yml"} {
+		if name, ok := strings.CutSuffix(entry.Name(), ext); ok {
+			return name, true
+		}
+	}
+	return "", false
+}
+
 // Preset returns a theme by name. The bool is false for an unknown name; the
 // caller warns and falls back rather than exiting, because a typo in a config
 // should not stop a disk usage tool from opening.
 func Preset(name string) (Theme, bool) {
+	if th, ok := userThemes[name]; ok {
+		return th, true
+	}
 	th, ok := bundled()[name]
 	return th, ok
 }
 
-// Names lists every theme, sorted, for `cdu themes` and for the error message on
-// an unknown name.
+// Names lists every theme, yours included, sorted — for `cdu themes` and for the
+// error message on an unknown name.
 func Names() []string {
-	set := bundled()
-	names := make([]string, 0, len(set))
-	for name := range set {
+	seen := make(map[string]struct{}, len(bundled())+len(userThemes))
+	for name := range bundled() {
+		seen[name] = struct{}{}
+	}
+	for name := range userThemes {
+		seen[name] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
 		names = append(names, name)
 	}
 	sort.Strings(names)
