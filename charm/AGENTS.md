@@ -46,9 +46,15 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   `mono` theme.
 - **Colours come from the active `theme.Theme`**, never from a literal in the
   render path — `lg()` in `style.go` is the only door they come through. Tokens
-  name a role, not a hue: `Accent`, not `pink`. The charm theme's accent happens
-  to be pink; catppuccin-latte's is not, and a renderer reaching for `pink` would
-  be telling the truth in exactly one theme.
+  name a role, not a hue: `Accent`, not `pink`. charm's accent happens to be
+  pink, midnight's is cyan and phosphor's is green — a renderer reaching for
+  `pink` would be telling the truth in exactly one theme.
+- **`Selected` and `Ink` look alike and are not.** `Selected` sits on `Panel`, a
+  surface; `Ink` sits on `Danger`/`Dim`, which are colours and can be light even
+  in a dark theme. They are the same white in charm, which is why fusing them
+  went unnoticed until a theme with a light danger colour made the delete button
+  unreadable. `internal/theme/contrast_test.go` checks every pairing that
+  `newStyles` actually composes — add to it when you compose a new one.
 - **The Charm UI owns the terminal exclusively.** Nothing else may attach a reader
   to it. `cmd/cdu/main.go` creates the tcell screen and tview application *only*
   for `--classic`; when both existed at once they raced Bubble Tea for stdin and

@@ -24,12 +24,15 @@ const swatchCells = 10
 func List(w io.Writer, current string) error {
 	var b strings.Builder
 
+	var anyLight bool
+
 	b.WriteString("Bundled themes:\n\n")
 	for _, name := range Names() {
 		th, ok := Preset(name)
 		if !ok {
 			continue
 		}
+		anyLight = anyLight || th.Light
 		marker := "  "
 		if name == current {
 			marker = "* "
@@ -42,8 +45,13 @@ func List(w io.Writer, current string) error {
 	b.WriteString("\nOverridable tokens:\n")
 	fmt.Fprintf(&b, "  %s\n", strings.Join(TokenNames(), ", "))
 	b.WriteString("Colours are #rrggbb only, because the usage bar blends them.\n")
-	b.WriteString("\nA light theme needs a light terminal: cdu never paints the background, so\n" +
-		"your terminal's own shows through — which is what keeps transparency working.\n")
+
+	// Only say this when something above it is light. No bundled theme is, since
+	// daylight was dropped, but a theme of your own can be.
+	if anyLight {
+		b.WriteString("\nA light theme needs a light terminal: cdu never paints the background, so\n" +
+			"your terminal's own shows through — which is what keeps transparency working.\n")
+	}
 
 	_, err := io.WriteString(w, b.String())
 	return err

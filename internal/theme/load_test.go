@@ -35,7 +35,7 @@ func TestEveryBundledThemeParses(t *testing.T) {
 // count is not decoration: every one of them is a promise to keep working, and
 // `cdu themes` is meant to be a list a person reads rather than scrolls.
 func TestTheBundledSetIsExactlyTheBriefsFive(t *testing.T) {
-	assert.Equal(t, []string{"charm", "daylight", "ember", "midnight", "mono"}, Names())
+	assert.Equal(t, []string{"charm", "ember", "midnight", "mono", "phosphor"}, Names())
 }
 
 func TestDefaultThemeIsBundled(t *testing.T) {
@@ -46,8 +46,13 @@ func TestDefaultThemeIsBundled(t *testing.T) {
 }
 
 // An unknown name is reported, never silently swapped for the default.
+//
+// `catppuccin` and `glacier` are in the list because they briefly existed:
+// catppuccin was replaced by the brief's own five, and glacier turned out to be
+// midnight under another name. Anyone who tried them should be told they are
+// gone rather than quietly given charm.
 func TestUnknownPresetIsReported(t *testing.T) {
-	for _, name := range []string{"nonsense", "", "catppuccin", "glacier"} {
+	for _, name := range []string{"nonsense", "", "catppuccin", "glacier", "daylight"} {
 		_, ok := Preset(name)
 		assert.False(t, ok, "%q must not resolve", name)
 	}
@@ -84,12 +89,21 @@ func TestParseTakesTheNameFromTheCaller(t *testing.T) {
 }
 
 // The metadata keys have to survive the round trip from file to Theme — light in
-// particular, because it is the only thing that tells a reader the theme needs a
+// particular, because it is the only thing that tells a reader a theme needs a
 // light terminal.
+//
+// No bundled theme is light any more: daylight was dropped for phosphor, and the
+// set is deliberately all dark. So `light` is exercised through the parser, which
+// is the path a user's own theme takes.
 func TestParseReadsTheMetadata(t *testing.T) {
-	daylight, ok := Preset("daylight")
-	require.True(t, ok)
-	assert.True(t, daylight.Light, "daylight must be flagged light")
+	th, err := parse("paper", []byte(
+		"light: true\npanel: \"#eeeeee\"\ntext: \"#222222\"\ndir: \"#000000\"\n"+
+			"selected: \"#000000\"\nink: \"#ffffff\"\ndim: \"#666666\"\naccent: \"#aa0066\"\n"+
+			"size: \"#006644\"\ndanger: \"#aa0022\"\nbar-from: \"#cc3399\"\nbar-to: \"#6644cc\"\n"+
+			"bar-track: \"#dddddd\"\n"))
+	require.NoError(t, err)
+	assert.True(t, th.Light, "a theme that says it is light must come back light")
+	assert.False(t, th.Plain)
 
 	mono, ok := Preset("mono")
 	require.True(t, ok)
@@ -99,6 +113,17 @@ func TestParseReadsTheMetadata(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, charm.Light)
 	assert.False(t, charm.Plain)
+}
+
+// The bundled set is all dark, and mono covers a light terminal by using no
+// colour at all. That is a real gap — the brief asked for a light theme — so it
+// is recorded here rather than left to be rediscovered.
+func TestNoBundledThemeIsLight(t *testing.T) {
+	for _, name := range Names() {
+		th, _ := Preset(name)
+		assert.False(t, th.Light,
+			"%s is light: if a light theme comes back, `cdu themes` must explain the background rule again", name)
+	}
 }
 
 // midnight is the brief's own second theme — cool dark, deep blue/cyan, calmer

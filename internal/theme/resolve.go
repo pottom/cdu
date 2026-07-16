@@ -11,8 +11,8 @@ import (
 // overrides the two colours they disagree with:
 //
 //	theme:
-//	  preset: catppuccin-mocha
-//	  accent: "#f5c2e7"
+//	  preset: midnight
+//	  accent: "#ff5fd1"
 type Config struct {
 	Preset string `yaml:"preset,omitempty"`
 	Theme  `yaml:",inline"`
@@ -74,8 +74,8 @@ func (t *Theme) dropInvalid() {
 	}
 }
 
-// unknownPreset names the alternatives. A user who typed `--theme mocha` wants
-// to be told it is `catppuccin-mocha`, not left guessing why nothing changed.
+// unknownPreset names the alternatives. A user who typed `--theme midnite` wants
+// to be shown `midnight`, not left guessing why nothing changed.
 func unknownPreset(name string) error {
 	return fmt.Errorf("unknown theme %q; available: %s", name, strings.Join(Names(), ", "))
 }

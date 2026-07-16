@@ -9,11 +9,11 @@ import (
 
 // The bug this file exists for: Ink used to be Selected, on the grounds that
 // both are "the bright one". In charm they are the same white and the mistake
-// costs nothing. Catppuccin's red is #f38ba8 — a *light* pastel — so the same
-// white landed on it at 1.3:1 and the delete button became unreadable, in a
-// theme that is otherwise dark.
+// costs nothing — which is why it survived. It only surfaces on a theme whose
+// danger colour is light, where that same white landed on it at 1.3:1 and the
+// delete button became unreadable, in a theme that is otherwise dark.
 //
-// Colour pairings are not checkable by eye across eight themes, and the failure
+// Colour pairings are not checkable by eye across a set of themes, and this one
 // only shows up in a modal nobody opens by accident. So they are checked here.
 //
 // The bar is WCAG AA for large or bold text, 3:1, which is what every one of
@@ -82,16 +82,17 @@ func TestEveryPresetIsLegible(t *testing.T) {
 }
 
 // The cursor row has to lift off the panel rather than merely sit on it, which
-// means Selected cannot be the same colour as an ordinary file name. This is the
-// other half of what made catppuccin look flat.
+// means Selected cannot be the same colour as an ordinary file name. A theme
+// where the two are equal looks flat, and the reason is hard to spot: everything
+// is present, the row just does not read as selected.
 func TestSelectedLiftsOffTheOrdinaryText(t *testing.T) {
 	for _, name := range Names() {
 		th, ok := Preset(name)
 		require.True(t, ok)
 		if th.Plain || th.Light {
-			// Latte's ramp is inverted: `text` is already its darkest neutral, so
-			// there is nothing beyond it and the cursor row leans on its panel, its
-			// marker and its weight instead.
+			// A light theme can genuinely run out of room: its `text` may already be
+			// the darkest ink it has, leaving the cursor row to lean on its panel, its
+			// marker and its weight. No bundled theme is light, but one of yours can be.
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
@@ -101,10 +102,11 @@ func TestSelectedLiftsOffTheOrdinaryText(t *testing.T) {
 	}
 }
 
-// The panel is the cursor row's bed. If it is a shade of the terminal's own
-// background, the cursor row has no bed at all — which is exactly what surface0
-// did for catppuccin. There is no background token to compare against, so this
-// checks the panel against the darkest and lightest a terminal is likely to be.
+// The panel is the cursor row's bed. If it is barely a shade off the terminal's
+// own background, the cursor row has no bed at all and the whole theme reads as
+// flat. There is no background token to compare against — cdu does not paint the
+// field — so this checks the panel against the darkest and lightest a terminal
+// is likely to be.
 func TestPanelSeparatesFromAPlausibleTerminalBackground(t *testing.T) {
 	const minPanelContrast = 1.2
 

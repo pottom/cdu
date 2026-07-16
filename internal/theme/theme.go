@@ -2,10 +2,9 @@
 // interface is built from, and the presets bundled into the binary.
 //
 // A token names a role, not a hue. The charm theme's accent happens to be pink,
-// but catppuccin-latte's is mauve and daylight's is not pink at all — a renderer
-// reaching for `pink` would be telling the truth in exactly one theme. So the
-// tokens are Accent, Danger, Size and so on, and the render path never sees a
-// colour literal.
+// midnight's is cyan and phosphor's is green — a renderer reaching for `pink`
+// would be telling the truth in exactly one theme. So the tokens are Accent,
+// Danger, Size and so on, and the render path never sees a colour literal.
 package theme
 
 import (
@@ -70,12 +69,14 @@ type Theme struct {
 	// Ink is the foreground on a filled chip: the focused button (on Dim) and the
 	// destructive one (on Danger).
 	//
-	// It looks like Selected and in the charm theme it is the same white, which is
-	// exactly why it was worth separating. Selected sits on Panel, a *surface*,
-	// which is dark in a dark theme. Ink sits on Accent/Danger/Dim, which are
-	// *colours* — and on a pastel palette those are light even though the theme is
-	// dark, so the ink has to go dark with them. Catppuccin's red is #f38ba8;
-	// white-on-that is 1.3:1, an unreadable button.
+	// It looks like Selected, and in charm it is the same white, which is exactly
+	// why it was worth separating. Selected sits on Panel — a *surface*, dark in a
+	// dark theme. Ink sits on Danger and Dim — *colours*, which can be light even
+	// when the theme is dark. ember's danger is #ff4d4d and its ink is near-black
+	// for that reason, while its selected row stays white. Fusing the two put
+	// white on a light red at about 3:1, and on a pastel palette it went to 1.3:1
+	// — an unreadable button, in a modal, on one theme. contrast_test.go is what
+	// caught it and what keeps it caught.
 	Ink Color `yaml:"ink,omitempty"`
 	// Dim is percentages, key hints, and disabled buttons.
 	Dim Color `yaml:"dim,omitempty"`

@@ -29,18 +29,21 @@ func TestListSaysMonoHasNoColour(t *testing.T) {
 	assert.Regexp(t, `mono\s+any\s+\(no colour\)`, b.String())
 }
 
-// The listing is the answer to "what can I type", so it has to say which themes
-// need a light terminal — cdu does not paint the background, so a light theme on
-// a dark terminal is unreadable rather than merely unusual.
-func TestListFlagsTheLightThemes(t *testing.T) {
+// The listing is the answer to "what can I type", so it has to say how to type
+// it and what each theme expects of the terminal.
+func TestListSaysWhatEachThemeExpects(t *testing.T) {
 	var b strings.Builder
 	require.NoError(t, List(&b, ""))
 	out := b.String()
 
-	assert.Regexp(t, `daylight\s+light`, out)
 	assert.Regexp(t, `midnight\s+dark`, out)
-	assert.Contains(t, out, "light theme needs a light terminal")
+	assert.Regexp(t, `phosphor\s+dark`, out)
 	assert.Contains(t, out, "--theme NAME", "it must say how to use one")
+
+	// The background rule only applies to a light theme, and none is bundled. It
+	// would be noise on a listing where every row says "dark".
+	assert.NotContains(t, out, "light theme needs a light terminal",
+		"do not explain light themes when none is listed")
 }
 
 // Piped into a file or run on a dumb terminal, the listing still has to be
