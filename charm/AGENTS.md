@@ -22,6 +22,8 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `filter.go`, `fuzzy.go` — the `/` fuzzy filter and its match highlighting.
 - `viewer.go` — the `v` file pager, with the binary sniff and the read cap.
 - `mouse.go` — wheel-scroll and click-to-select, behind `--mouse`.
+- `icons.go` — the icon cell: markers by default, Nerd Font glyphs behind `--icons`.
+- `icons_table.go` — **generated** from exa's `icons.rs`; do not hand-edit.
 - `style.go` — the palette and the resolved Lipgloss styles.
 - `util.go` — truncation, padding, formatting.
 
@@ -164,7 +166,34 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   colour escapes; under the Ascii profile it forbids every escape.
 - **`--no-unicode` is scoped to the size bar, as in gdu** (its help says "for size
   bar"). The bar becomes `#`/`-`; the marker, the rule and the wordmark stay
-  unicode, matching gdu rather than trying to be a full ASCII mode.
+  unicode, matching gdu rather than trying to be a full ASCII mode. The icon cell
+  is the exception, because `--no-unicode` and `--icons` are a contradiction and
+  the flag that says "you cannot" wins.
+
+### Icons
+
+- **`--icons` is opt-in and stays that way.** The glyphs are Nerd Font private-use
+  codepoints; a terminal without a patched font draws a row of boxes, and cdu
+  cannot ask what font is loaded. On by default would break the majority to please
+  the minority.
+- **The icon cell is glyph *plus a space*, always exactly `iconWidth`.** This is
+  what makes the feature safe: `runewidth` measures a PUA codepoint as one cell,
+  but a Nerd Font's *non-Mono* variants draw it across two, and cdu has no way to
+  know which is installed. The trailing space is the room the wide draw spills
+  into, so the size column stays put either way. exa does the same. Never put
+  content immediately after the glyph, and never make the cell one column.
+- **`icons_table.go` is generated, not written.** It comes from exa's
+  `src/output/icons.rs` (MIT — see NOTICE), *not* from eza's: eza is EUPL-1.2, a
+  copyleft licence cdu cannot take data from. A wrong codepoint is invisible — it
+  renders as some other plausible icon — so it is transcribed mechanically.
+- **Go's `\u` takes exactly four hex digits.** Nine of the glyphs are plane-15
+  Material Design codepoints and need `\U` with eight; the generator got this
+  wrong once and produced a four-digit icon followed by a literal digit.
+  `TestEveryGlyphIsOneCellAndInThePrivateUseArea` catches it.
+- **Lookup order is name, then directory, then extension.** A name beats an
+  extension because `Dockerfile` and `.gitignore` have none worth reading; a
+  directory beats an extension because `node_modules.bak` is a directory, not a
+  backup file.
 
 ## Work Guidance
 

@@ -76,6 +76,7 @@ type Flags struct {
 	ShowMTime          bool     `yaml:"show-mtime"`
 	NoColor            bool     `yaml:"no-color"`
 	Mouse              bool     `yaml:"mouse"`
+	Icons              bool     `yaml:"icons"`
 	NonInteractive     bool     `yaml:"non-interactive"`
 	Interactive        bool     `yaml:"interactive"`
 	NoProgress         bool     `yaml:"no-progress"`
@@ -474,6 +475,9 @@ func (a *App) getCharmOptions() []charm.Option {
 	}
 	if a.Flags.Mouse {
 		opts = append(opts, func(ui *charm.UI) { ui.SetMouse() })
+	}
+	if a.Flags.Icons {
+		opts = append(opts, func(ui *charm.UI) { ui.SetIcons() })
 	}
 	if a.Flags.ShowItemCount {
 		opts = append(opts, func(ui *charm.UI) { ui.SetShowItemCount() })

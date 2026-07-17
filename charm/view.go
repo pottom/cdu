@@ -407,25 +407,7 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 
 	removing := item == m.pending
 
-	icon := ""
-	if m.width >= minWidthForIcon {
-		switch {
-		case removing:
-			// The removal is happening off the render loop and can take seconds. The
-			// row spins so that the wait is visible rather than looking like a key
-			// that never registered.
-			icon = m.tickFrame() + " "
-		case m.ui.noUnicode:
-			icon = "  "
-			if item.IsDir() {
-				icon = "> "
-			}
-		case item.IsDir():
-			icon = "▸ "
-		default:
-			icon = "· "
-		}
-	}
+	icon := m.rowIcon(item)
 
 	sizeText := padLeft(m.ui.formatSize(size), sizeColWidth)
 

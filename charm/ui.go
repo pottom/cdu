@@ -44,6 +44,10 @@ type UI struct {
 	noDelete   bool
 	noViewFile bool
 	mouse      bool
+	// icons draws Nerd Font glyphs in the icon cell instead of the plain markers.
+	// Off unless asked for: the glyphs need a patched font, and cdu cannot tell
+	// whether one is loaded.
+	icons bool
 
 	// Optional columns, off by default and toggled with c and m.
 	showItemCount bool
@@ -169,6 +173,13 @@ func (ui *UI) SetNoViewFile() {
 // terminal text selection keeps working for anyone who does not ask for it.
 func (ui *UI) SetMouse() {
 	ui.mouse = true
+}
+
+// SetIcons draws Nerd Font glyphs in the icon cell (--icons). Off by default:
+// without a patched font every row would start with a box, and cdu has no way to
+// ask the terminal what font it has.
+func (ui *UI) SetIcons() {
+	ui.icons = true
 }
 
 // SetShowItemCount starts with the item-count column on (-C).
