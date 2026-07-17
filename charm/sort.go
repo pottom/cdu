@@ -82,9 +82,9 @@ func (ui *UI) SetDefaultSorting(by, order string) {
 		ui.sortBy = fs.ParseSortBy(by)
 	}
 	switch order {
-	case "asc":
+	case yamlAsc:
 		ui.sortOrder = fs.SortAsc
-	case "desc":
+	case yamlDesc:
 		ui.sortOrder = fs.SortDesc
 	}
 }

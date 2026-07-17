@@ -578,6 +578,9 @@ var (
 		{key: "B", label: "relative"},
 		{key: "c", label: "count"},
 		{key: "m", label: "mtime"},
+		// A key nobody can see is a key nobody has, and this is the only place the
+		// save is advertised — so it sheds last, before only `cancel`.
+		{key: "s", label: "save view", drop: 5},
 		{key: "esc", label: "cancel"},
 	}
 	scanKeys = []keyHint{

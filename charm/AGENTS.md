@@ -139,6 +139,21 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - **A column with no room says so.** On a narrow terminal `c`/`m` still flip, but
   `toggleLabel` reports that there is no width to draw them, rather than looking
   broken.
+- **The view is saved explicitly (`t` then `s`), never on exit.** Someone who
+  turns the mtime column on to answer one question would otherwise find it on
+  forever with no idea what did it. A view is a thing you try; a config is a thing
+  you decide. `s` lives inside the `t` menu because that is where the settings it
+  writes are — top-level `s` is already sort.
+- **charm cannot write the config itself.** It cannot see `Flags` (`cmd/cdu/app`
+  imports charm, not the reverse), and a writer that knew only the six fields it
+  owns would silently drop the rest of the file. `WithConfigSaver` takes a
+  callback; `app.saveView` folds the view into the whole struct and writes that.
+  It writes cdu's own path even when a gdu config was read — the same split
+  `--write-config` makes.
+- **`CreateUI` reconciles a size sort with the apparent-size column** after the
+  options are applied. `handleToggle` does this at runtime; without the same at
+  startup, a config carrying both `show-apparent-size` and `sorting.by: size`
+  opens ordered by a number the list is not showing.
 
 ### Filter, viewer, mouse
 
@@ -204,8 +219,13 @@ footer advertises only bindings that exist — do not list a key before it works
 `u` appears only when there is something to undo.
 
 Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
-menu, `t` column menu (or direct `a`/`B`/`c`/`m`), `v` view file, `d` trash,
-`D` delete permanently, `e` empty a file, `u` undo the last trash, `r` rescan.
+menu, `t` column menu (or direct `a`/`B`/`c`/`m`; `t` then `s` saves the view),
+`v` view file, `d` trash, `D` delete permanently, `e` empty a file, `u` undo the
+last trash, `r` rescan.
+
+Flags this package reads: `--no-delete`, `--no-view-file`, `--mouse`, `--icons`,
+`--no-unicode`, `--no-color`, `--theme`, and the `theme:`/`sorting:` config
+blocks.
 
 ## Verification
 

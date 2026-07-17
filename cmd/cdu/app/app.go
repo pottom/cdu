@@ -463,6 +463,7 @@ func (a *App) getCharmOptions() []charm.Option {
 		charm.WithTheme(&a.Flags.Theme, a.Flags.ThemeName),
 		charm.WithNotice(a.Flags.ConfigNotice),
 		charm.WithWarnings(a.Flags.ThemeProblems...),
+		charm.WithConfigSaver(a.saveView),
 	}
 	if a.Flags.NoUnicode {
 		opts = append(opts, charm.UseOldSizeBar())

@@ -276,6 +276,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFileLoaded(msg)
 		return m, nil
 
+	case viewSavedMsg:
+		m.applyViewSaved(msg)
+		return m, nil
+
 	case deleteDoneMsg:
 		cmd := m.applyDelete(msg)
 		return m, cmd
@@ -319,8 +323,8 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.handleSortKey(msg.String())
 		return m, nil
 	case m.colPending:
-		m.handleColumnKey(msg.String())
-		return m, nil
+		cmd := m.handleColumnKey(msg.String())
+		return m, cmd
 	}
 
 	switch msg.String() {

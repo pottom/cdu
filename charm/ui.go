@@ -56,6 +56,12 @@ type UI struct {
 	sortBy    fs.SortBy
 	sortOrder fs.SortOrder
 
+	// save persists the view (t then s). It is a callback because charm cannot see
+	// the config struct — cmd/cdu/app imports charm, not the reverse — and a writer
+	// that only knew the fields here would drop the rest of the file. Nil means
+	// saving is unavailable, and the key says so.
+	save func(ViewSettings) (string, error)
+
 	// theme supplies every colour the renderer uses. The constructor plants the
 	// default, so no render path has to ask whether a theme was configured.
 	theme theme.Theme
@@ -110,6 +116,15 @@ func CreateUI(
 	}
 	for _, o := range opts {
 		o(ui)
+	}
+
+	// Sorting by size has to mean the size on screen, exactly as toggling the
+	// column at runtime makes sure of. Without this, a config carrying both
+	// show-apparent-size and sorting.by: size would open ordered by disk usage
+	// while showing apparent size — the very inconsistency handleToggle guards
+	// against, arriving through the front door instead.
+	if ui.sortBy == fs.SortBySize && ui.ShowApparentSize {
+		ui.sortBy = fs.SortByApparentSize
 	}
 	return ui
 }
