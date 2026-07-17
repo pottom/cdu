@@ -37,7 +37,8 @@ var helpGroups = []helpGroup{
 		{"← h", "go to parent"},
 		{"g G", "jump to top / bottom"},
 		{"pgup pgdn", "page"},
-		{"/", "filter this directory, fuzzy"},
+		{"/", "filter this directory (fuzzy, live)"},
+		{"f", "find files by name, any depth (*.mkv)"},
 	}},
 	{"Change the disk", []helpEntry{
 		{"d", "trash it — does not free space"},

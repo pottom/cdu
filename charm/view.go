@@ -162,6 +162,8 @@ func (m *model) View() string {
 		return m.viewHashing()
 	case screenDup:
 		return m.viewDup()
+	case screenFind:
+		return m.viewFind()
 	}
 	return ""
 }
@@ -389,6 +391,9 @@ func (m *model) headerPath() string {
 	}
 	if m.scr == screenDup {
 		return "duplicate files" + m.searchScopeSuffix()
+	}
+	if m.scr == screenFind {
+		return fmt.Sprintf("%d matching “%s”%s", len(m.findResults), m.findPattern, m.searchScopeWord())
 	}
 	if m.scr == screenScanning {
 		// -d comes up on this screen while the mount table is being read, and has no
@@ -683,9 +688,10 @@ var (
 		{key: "→", label: "open"},
 		{key: "←", label: "back"},
 		{key: "/", label: "filter", drop: 3},
+		{key: "f", label: "find", drop: 4},
 		{key: "v", label: "view", drop: 4},
 		{key: "s", label: "sort", drop: 2},
-		{key: "t", label: "cols", drop: 5},
+		{key: "t", label: "cols", drop: 4},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 3},
 		{key: "r", label: "rescan", drop: 5},
@@ -733,6 +739,16 @@ var (
 		{key: "q", label: "quit"},
 	}
 	dupKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "↵", label: "reveal"},
+		{key: "v", label: "view", drop: 3},
+		{key: "d", label: "trash", drop: 1},
+		{key: "D", label: "delete", drop: 2},
+		{key: "esc", label: "back"},
+		{key: "q", label: "quit", drop: 4},
+	}
+	// findKeys is the results screen; the input prompt has its own footer.
+	findKeys = []keyHint{
 		{key: "↑↓", label: "move"},
 		{key: "↵", label: "reveal"},
 		{key: "v", label: "view", drop: 3},
@@ -808,6 +824,9 @@ func (m *model) viewFooter() string {
 	if m.filtering {
 		return m.viewFilterFooter()
 	}
+	if m.finding {
+		return m.viewFindFooter()
+	}
 
 	keys := m.browseFooterKeys()
 	switch {
@@ -823,6 +842,8 @@ func (m *model) viewFooter() string {
 		keys = hashingKeys
 	case m.scr == screenDup:
 		keys = dupKeys
+	case m.scr == screenFind:
+		keys = findKeys
 	case m.scr == screenConfirm:
 		keys = confirmKeys
 	case m.sortPending:

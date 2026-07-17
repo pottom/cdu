@@ -31,6 +31,8 @@ const (
 	screenHashing
 	// screenDup is the duplicate groups, once found.
 	screenDup
+	// screenFind is the results of a filename search (f).
+	screenFind
 	screenError
 )
 
@@ -95,6 +97,17 @@ type model struct {
 	// filtering is the / input mode; filter is the query so far.
 	filtering bool
 	filter    string
+
+	// finding is the f input mode; findQuery is the pattern being typed. findResults
+	// is the tree-wide match it produces, findPattern the pattern that produced it
+	// (kept for the header). f is find, / is filter — different tools, different
+	// names.
+	finding     bool
+	findQuery   string
+	findResults fs.Files
+	findPattern string
+	findCursor  int
+	findOffset  int
 
 	// maxRowSize is the largest row in the current directory, measured when the
 	// directory is entered. --show-relative-size draws the bars against it.
@@ -435,6 +448,8 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case m.filtering:
 		return m.handleFilterKey(msg)
+	case m.finding:
+		return m.handleFindInputKey(msg)
 	case m.sortPending:
 		m.handleSortKey(msg.String())
 		return m, nil
@@ -472,6 +487,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.scr == screenDup {
 		return m.handleDupKey(msg)
+	}
+	if m.scr == screenFind {
+		return m.handleFindKey(msg)
 	}
 	if m.scr != screenBrowse {
 		return m, nil
@@ -514,6 +532,8 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "T":
 		return m.collectTopFiles()
+	case "f":
+		m.openFind()
 	case "F":
 		return m.findDuplicates()
 	case "r":

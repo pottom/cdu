@@ -90,6 +90,12 @@ func (m *model) target() (item, parent fs.Item) {
 			return nil, nil
 		}
 		return it, it.GetParent()
+	case screenFind:
+		it := m.selectedFind()
+		if it == nil {
+			return nil, nil
+		}
+		return it, it.GetParent()
 	}
 	return m.selected(), m.currentDir
 }
@@ -320,6 +326,7 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 		m.dropRow(msg.item)
 		m.dropTopFile(msg.item)
 		m.dropDuplicate(msg.item)
+		m.dropFindResult(msg.item)
 	case actionEmpty:
 		msg.parent.RemoveFile(msg.item)
 		msg.parent.AddFile(emptiedFile(msg.item, msg.parent))

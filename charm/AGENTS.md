@@ -27,6 +27,7 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `help.go` — `?`: every key on one screen.
 - `cancel.go` — `esc` during a scan.
 - `duplicates.go` — `F`: the duplicate search, its screen, and the browser mark.
+- `find.go` — `f`: the tree-wide filename search and its results list.
 - `icons.go` — the icon cell: markers by default, Nerd Font glyphs behind `--icons`.
 - `icons_table.go` — **generated** from exa's `icons.rs`; do not hand-edit.
 - `style.go` — the palette and the resolved Lipgloss styles.
@@ -203,6 +204,18 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 
 ### Filter, viewer, mouse
 
+- **`/` filters, `f` finds — two tools, two names, on purpose.** `/` is a fuzzy,
+  live, *local* narrowing of the current directory: it rebuilds `m.filtered` as
+  you type and only ever sees this directory's rows, which is why `/` `*.mkv`
+  found nothing (`*` is a literal to a fuzzy match, and the file was a directory
+  down). `f` is an *exact, tree-wide* search from `searchRoot()` that opens a
+  results list shaped like the largest-files screen. Do not merge them.
+- **`f`'s match is glob when there is a wildcard, case-insensitive substring
+  otherwise.** Bare `mkv` finds every `.mkv`; `*.mkv` is a glob; both ignore case,
+  because a search that missed `IMG.JPG` for `img` would feel broken. `matchName`
+  is the whole rule and is pinned on its own.
+- **`f` walks names only, so it runs on the render loop** — like `T`, unlike `F`.
+  It never opens a file, so there is no I/O to hang on and no goroutine.
 - **The filter is a view, never a change to the tree.** `applyFilter` only rebuilds
   `m.filtered`; a delete under a filter still finds and removes the real item, from
   both lists. `m.items()` is the single accessor everything moves over. Navigating
@@ -311,8 +324,8 @@ there is something to undo.
 Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
 menu, `t` column menu (or direct `a`/`B`/`c`/`m`; `t` then `s` saves the view),
 `v` view file, `d` trash, `D` delete permanently, `e` empty a file, `u` undo the
-last trash, `r` rescan, `T` largest files, `F` find duplicates, `?` help, `esc`
-back / cancel a scan.
+last trash, `r` rescan, `f` find (tree-wide), `T` largest files, `F` find
+duplicates, `?` help, `esc` back / cancel a scan.
 **`help.go` is the list that has to be right** — add a binding there, or the
 drift test fails.
 
