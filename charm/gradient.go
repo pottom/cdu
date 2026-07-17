@@ -140,6 +140,17 @@ func (b *barRenderer) render(frac float64, width int) string {
 	return ""
 }
 
+// plainCells is the bar as bare characters, for a row that will be styled whole
+// afterwards — the cursor row, which carries one background across everything on
+// it and so cannot hold a bar coloured cell by cell.
+func (b *barRenderer) plainCells(frac float64, width int) string {
+	if width < 1 {
+		return ""
+	}
+	filled := b.filledCells(frac, width)
+	return strings.Repeat(b.chars.full, filled) + strings.Repeat(b.chars.empty, width-filled)
+}
+
 // rampIndex maps cell i of a filled run of n onto the precomputed ramp. A run of
 // one sits at the start of the gradient rather than in the middle of it, so a
 // sliver of a bar is pink — the same colour a long bar starts with.

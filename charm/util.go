@@ -33,6 +33,12 @@ func padLines(s string, n int) string {
 	return s + strings.Repeat("\n", n-len(lines))
 }
 
+// joinLines is strings.Join with a newline, named for what it is doing so a
+// caller building a screen reads as building a screen.
+func joinLines(lines []string) string {
+	return strings.Join(lines, "\n")
+}
+
 // clipTo fits a plain string to exactly width columns: truncating a long one and
 // padding a short one.
 //

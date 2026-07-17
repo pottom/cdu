@@ -140,6 +140,8 @@ func (m *model) View() string {
 		return m.viewConfirm()
 	case screenViewer:
 		return m.viewViewer()
+	case screenDisks:
+		return m.viewDisks()
 	}
 	return ""
 }
@@ -347,7 +349,15 @@ func (m *model) viewBrand() string {
 // An accepted filter that is no longer being typed is shown here too, so that a
 // directory listing fewer rows than it holds is never a mystery.
 func (m *model) headerPath() string {
+	if m.scr == screenDisks {
+		return "select a device to analyze"
+	}
 	if m.scr == screenScanning {
+		// -d comes up on this screen while the mount table is being read, and has no
+		// path to name until a device is picked — "scanning " alone reads like a bug.
+		if m.ui.showDisks && m.ui.scanPath == "" {
+			return "reading the mount table"
+		}
 		return "scanning " + m.ui.scanPath
 	}
 	if m.currentDir == nil {
@@ -658,6 +668,12 @@ var (
 	scanKeys = []keyHint{
 		{key: "q", label: "quit"},
 	}
+	diskKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "↵", label: "analyze"},
+		{key: "r", label: "reread", drop: 3},
+		{key: "q", label: "quit"},
+	}
 	confirmKeys = []keyHint{
 		{key: "←→", label: "choose"},
 		{key: "enter", label: "confirm"},
@@ -721,6 +737,8 @@ func (m *model) viewFooter() string {
 	switch {
 	case m.scr == screenScanning:
 		keys = scanKeys
+	case m.scr == screenDisks:
+		keys = diskKeys
 	case m.scr == screenConfirm:
 		keys = confirmKeys
 	case m.sortPending:

@@ -21,6 +21,7 @@ const (
 	screenBrowse
 	screenConfirm
 	screenViewer
+	screenDisks
 	screenError
 )
 
@@ -33,14 +34,22 @@ const progressInterval = 100 * time.Millisecond
 // blinks it once a second.
 const blinkTicks = 5
 
-// keyEscape and keyEnter back out of and accept the modes and modals. They are
-// the two keys that always mean the same thing, which is why nothing else may be
-// bound to them.
+// The keys that mean the same thing on every screen. keyEscape and keyEnter in
+// particular always back out of and accept, which is why nothing else may be
+// bound to them; the rest are named because more than one screen has a list to
+// move around in, and a list is a list.
 const (
 	keyEscape    = "esc"
 	keyEnter     = "enter"
 	keyBackspace = "backspace"
 	keyLeft      = "left"
+	keyRight     = "right"
+	keyUp        = "up"
+	keyDown      = "down"
+	keyHome      = "home"
+	keyEnd       = "end"
+	keyPgUp      = "pgup"
+	keyPgDown    = "pgdown"
 )
 
 type model struct {
@@ -128,6 +137,14 @@ type model struct {
 	// viewer holds the file being read with v: its lines, the scroll offset, and
 	// whether the read was capped. Nil when not viewing.
 	viewer *viewerState
+
+	// disks is the mount table, when cdu was started with -d. It is kept for the
+	// life of the program rather than re-read: it is the scan's parent, and back
+	// at the top of the tree returns to it. Nil means cdu was not started with -d,
+	// which is also what makes back at the top do nothing instead.
+	disks      device.Devices
+	diskCursor int
+	diskOffset int
 }
 
 type (
@@ -163,6 +180,11 @@ func newModel(ui *UI) *model {
 }
 
 func (m *model) Init() tea.Cmd {
+	// -d opens on the device list: there is no path to walk until one is picked.
+	if m.ui.showDisks {
+		m.scr = screenScanning
+		return tea.Batch(m.spinner.Tick, disksCmd(m.ui))
+	}
 	// A saved scan opened with -f is already in memory; there is nothing to walk.
 	if m.ui.topDir != nil {
 		m.enterDir(m.ui.topDir)
@@ -272,6 +294,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dev = msg.dev
 		return m, nil
 
+	case spinner.TickMsg:
+		if m.scr != screenScanning {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
+	return m.handleResultMsg(msg)
+}
+
+// handleResultMsg takes the messages that carry the result of work done off the
+// render loop. They are split out from Update only because it outgrew its length
+// budget; there is no other line between them.
+func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case fileLoadedMsg:
 		m.applyFileLoaded(msg)
 		return m, nil
@@ -280,20 +318,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyViewSaved(msg)
 		return m, nil
 
+	case disksMsg:
+		m.applyDisks(msg)
+		return m, nil
+
 	case deleteDoneMsg:
 		cmd := m.applyDelete(msg)
 		return m, cmd
 
 	case undoDoneMsg:
 		cmd := m.applyUndo(msg)
-		return m, cmd
-
-	case spinner.TickMsg:
-		if m.scr != screenScanning {
-			return m, nil
-		}
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
 	return m, nil
@@ -335,6 +369,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
+	if m.scr == screenDisks {
+		return m.handleDisksKey(msg)
+	}
 	if m.scr != screenBrowse {
 		return m, nil
 	}
@@ -405,6 +442,13 @@ func (m *model) ascend() {
 	}
 	parent := m.currentDir.GetParent()
 	if parent == nil {
+		// At the top of the tree. If cdu was started with -d, the device list is
+		// where this scan came from, so it is what "back" means — the same rule gdu
+		// follows, and the reason the list needs no key of its own.
+		if m.disks != nil {
+			m.scr = screenDisks
+			m.status, m.statusIsError = "", false
+		}
 		return
 	}
 	child := m.currentDir

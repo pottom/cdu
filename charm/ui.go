@@ -7,6 +7,7 @@
 package charm
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -39,6 +40,8 @@ type UI struct {
 	// getter backs the header's disk line. It is optional: without it, or on a
 	// path that belongs to no listed mount, the line is simply not drawn.
 	getter device.DevicesInfoGetter
+	// showDisks means -d: open on the device list rather than scanning a path.
+	showDisks bool
 
 	noUnicode  bool
 	noDelete   bool
@@ -244,10 +247,23 @@ func (ui *UI) ReadFromStorage(_, _ string) error {
 	return notYetInCharmUI("--read-from-storage")
 }
 
-// ListDevices is not implemented in the Charm interface yet.
-func (ui *UI) ListDevices(_ device.DevicesInfoGetter) error {
-	return notYetInCharmUI("-d / --show-disks")
+// ListDevices records that cdu was started with -d. The mount table itself is
+// read inside the Bubble Tea loop.
+//
+// gdu reads it here, before its interface exists. That is fine until a mount is
+// stale, and then the terminal simply sits there with nothing on it — the read
+// can block for a long time and there is no interface yet to say so. Deferring
+// it costs the error return this signature offers, which is a fair trade: the
+// failure is shown on the error screen instead of on stderr.
+func (ui *UI) ListDevices(getter device.DevicesInfoGetter) error {
+	ui.getter = getter
+	ui.showDisks = true
+	return nil
 }
+
+// errNoDeviceGetter is what -d hits when no mount-table reader was supplied,
+// which is a wiring mistake rather than anything the user did.
+var errNoDeviceGetter = errors.New("no device getter: cdu cannot read the mount table")
 
 // SetCollapsePath is accepted but not yet honoured by the Charm interface.
 func (ui *UI) SetCollapsePath(bool) {}
