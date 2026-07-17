@@ -209,10 +209,11 @@ func (m *model) rescan() tea.Cmd {
 		return nil
 	}
 
-	m.rows = nil
-	m.currentDir = nil
-	m.cursor, m.offset = 0, 0
-
+	// The tree we have is kept until a new one arrives. It is still true — the
+	// rescan is asking whether it still is — and it is what esc goes back to if
+	// the walk is cancelled. The scanning screen does not draw the list anyway, so
+	// there is nothing to gain by clearing it early. enterDir replaces the lot when
+	// the new tree lands.
 	return m.startScan()
 }
 
@@ -220,7 +221,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	c := m.confirm
 
 	switch msg.String() {
-	case "esc", "ctrl+c":
+	case keyEscape, keyCtrlC:
 		m.cancelConfirm()
 		return m, nil
 

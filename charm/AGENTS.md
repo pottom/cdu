@@ -83,9 +83,28 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   the one thing worth saying. Below one column `View` draws nothing at all.
   `clipTo` is the tool: it fits plain text to *exactly* a width, because
   truncation alone can come back a column short rather than split a wide rune.
-- **The analyzer cannot be cancelled** — it has no context and no `Stop()`.
-  Quitting mid-scan ends the program and lets the walk die with the process. Do
-  not add cancellation by editing `pkg/analyze`; that file is upstream-owned.
+- **A scan is cancelled through the analyzer's own ignore hook, and only there.**
+  The analyzer takes no context and has no `Stop()`, and `pkg/analyze` is
+  upstream's — editing it would put the scanning engine on the merge conflict
+  surface, which is the one thing the fork strategy exists to prevent. But the
+  analyzer asks *us* whether to descend into each directory, and asks before
+  descending: `ui.ignoreFunc` answers "ignore it" once `ui.cancel` is set, so the
+  walk skips every directory it has not opened and unwinds on its own, bounded by
+  what is already open. `fileTypeFilter` does the same one level down, before the
+  `stat`. `cancel_test.go` proves it stops rather than pretending to, by walking
+  the same tree twice and comparing the work done.
+- **A cancelled scan's tree is thrown away, never shown.** The directories the
+  walk never opened are *absent* from it — not marked, not empty, absent — so
+  every parent above them reports less than it holds. A disk usage tool quietly
+  showing sizes that are too small is worse than one showing nothing, and the
+  next key along is `d`.
+- **`esc` cancels, `q` quits.** `esc` means "out of this" on every other screen,
+  and a scan is a state you can want out of; `q` meaning something else on one
+  screen is how a binding stops being trustworthy. Cancelling goes back to
+  whatever the scan interrupted — the device list, the tree a rescan was
+  refreshing, or out, when it was the only thing cdu was asked to do.
+- **`rescan` keeps the old tree until a new one arrives.** It is still true, and
+  it is where `esc` goes back to.
 - **An analyzer is single-use until it is reset, and forgetting that is a panic.**
   `SignalGroup.Broadcast` *is* `close(ch)`, so a second `AnalyzeDir` on the same
   analyzer closes a closed channel and takes the program down. `ResetProgress`

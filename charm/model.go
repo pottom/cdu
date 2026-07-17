@@ -50,6 +50,7 @@ const (
 	keyEnd       = "end"
 	keyPgUp      = "pgup"
 	keyPgDown    = "pgdown"
+	keyCtrlC     = "ctrl+c"
 )
 
 type model struct {
@@ -149,6 +150,11 @@ type model struct {
 	diskRows   []diskRow
 	diskCursor int
 	diskOffset int
+
+	// cancelling means esc was pressed during a scan and the walk is unwinding.
+	// It cannot stop at once — what is already open still has to finish — so the
+	// screen says so, and the tree that eventually arrives is thrown away.
+	cancelling bool
 }
 
 type (
@@ -255,6 +261,8 @@ func deviceFor(path string, mounts device.Devices) *device.Device {
 // does not is the whole bug, so there is no reason to have one.
 func (m *model) startScan() tea.Cmd {
 	m.ui.Analyzer.ResetProgress()
+	m.ui.cancel.Store(false)
+	m.cancelling = false
 	m.scr = screenScanning
 	m.progress = common.CurrentProgress{}
 	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd())
@@ -263,7 +271,7 @@ func (m *model) startScan() tea.Cmd {
 func scanCmd(ui *UI) tea.Cmd {
 	return func() tea.Msg {
 		defer debug.FreeOSMemory()
-		dir := ui.Analyzer.AnalyzeDir(ui.scanPath, ui.CreateIgnoreFunc(), ui.CreateFileTypeFilter())
+		dir := ui.Analyzer.AnalyzeDir(ui.scanPath, ui.ignoreFunc(), ui.fileTypeFilter())
 		if dir == nil {
 			return scanErrMsg{err: notYetInCharmUI("scanning " + ui.scanPath)}
 		}
@@ -304,6 +312,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case scanDoneMsg:
+		if m.cancelling {
+			return m.afterCancel()
+		}
 		m.topDir = msg.dir
 		m.enterDir(msg.dir)
 		m.scr = screenBrowse
@@ -385,11 +396,12 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if m.scr == screenScanning {
+		return m.handleScanningKey(msg)
+	}
+
 	switch msg.String() {
-	case "q", "ctrl+c":
-		// The analyzer exposes no cancellation — no context, no Stop. Quitting
-		// mid-scan therefore tears down the program and lets the walk goroutine
-		// die with the process, which is what gdu effectively does too.
+	case "q", keyCtrlC:
 		return m, tea.Quit
 	}
 

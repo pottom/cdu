@@ -268,6 +268,12 @@ func (m *model) viewScanBody() string {
 		humanCount(m.progress.ItemCount),
 		m.ui.formatSize(m.progress.TotalUsage),
 	)
+	if m.cancelling {
+		// The walk cannot stop mid-directory, so there is a moment between esc and
+		// the screen changing. Saying so is what stops that moment reading as a key
+		// that did not register.
+		status = "cancelling · finishing the directories already open"
+	}
 
 	// spinner(1) + gap(1) + status + cursor(1)
 	const chrome = 3
@@ -678,6 +684,7 @@ var (
 		{key: "esc", label: "cancel"},
 	}
 	scanKeys = []keyHint{
+		{key: "esc", label: "cancel"},
 		{key: "q", label: "quit"},
 	}
 	diskKeys = []keyHint{
