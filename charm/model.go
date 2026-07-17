@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/internal/dup"
 	"github.com/pottom/cdu/pkg/device"
 	"github.com/pottom/cdu/pkg/fs"
 )
@@ -24,6 +25,14 @@ const (
 	screenDisks
 	screenTop
 	screenHelp
+	// screenHashing is the spinner while dup.Find reads the candidate files. It is
+	// its own screen, not the scan spinner, because it comes back with a different
+	// message and cancels back to a different place.
+	screenHashing
+	// screenDup is the duplicate groups, once found.
+	screenDup
+	// screenFind is the results of a filename search (f).
+	screenFind
 	screenError
 )
 
@@ -88,6 +97,17 @@ type model struct {
 	// filtering is the / input mode; filter is the query so far.
 	filtering bool
 	filter    string
+
+	// finding is the f input mode; findQuery is the pattern being typed. findResults
+	// is the tree-wide match it produces, findPattern the pattern that produced it
+	// (kept for the header). f is find, / is filter — different tools, different
+	// names.
+	finding     bool
+	findQuery   string
+	findResults fs.Files
+	findPattern string
+	findCursor  int
+	findOffset  int
 
 	// maxRowSize is the largest row in the current directory, measured when the
 	// directory is entered. --show-relative-size draws the bars against it.
@@ -175,6 +195,16 @@ type model struct {
 	// help is reachable from all of them.
 	helpFrom   screen
 	helpOffset int
+
+	// dupGroups is the result of the last duplicate search (F): sets of
+	// byte-identical files, most reclaimable first. dupRows is that flattened for
+	// the screen — a header per group, then its files. dupMarked is every file in
+	// a group, for the ▲ the browser draws beside it.
+	dupGroups []dup.Group
+	dupRows   []dupRow
+	dupMarked map[fs.Item]bool
+	dupCursor int
+	dupOffset int
 }
 
 type (
@@ -357,7 +387,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.scr != screenScanning {
+		if m.scr != screenScanning && m.scr != screenHashing {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -383,6 +413,9 @@ func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case disksMsg:
 		m.applyDisks(msg)
 		return m, nil
+
+	case dupDoneMsg:
+		return m.applyDupDone(msg)
 
 	case deleteDoneMsg:
 		cmd := m.applyDelete(msg)
@@ -415,6 +448,8 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case m.filtering:
 		return m.handleFilterKey(msg)
+	case m.finding:
+		return m.handleFindInputKey(msg)
 	case m.sortPending:
 		m.handleSortKey(msg.String())
 		return m, nil
@@ -446,6 +481,15 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.scr == screenTop {
 		return m.handleTopKey(msg)
+	}
+	if m.scr == screenHashing {
+		return m.handleHashingKey(msg)
+	}
+	if m.scr == screenDup {
+		return m.handleDupKey(msg)
+	}
+	if m.scr == screenFind {
+		return m.handleFindKey(msg)
 	}
 	if m.scr != screenBrowse {
 		return m, nil
@@ -488,6 +532,10 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "T":
 		return m.collectTopFiles()
+	case "f":
+		m.openFind()
+	case "F":
+		return m.findDuplicates()
 	case "r":
 		cmd := m.rescan()
 		return m, cmd
@@ -565,6 +613,29 @@ func (m *model) enterDir(dir fs.Item) {
 // filter is active, otherwise every row. A filtered slice is non-nil even when it
 // matches nothing, so an over-narrow filter shows an empty list rather than the
 // whole directory.
+// searchRoot is the subtree the whole-tree analyses (T, F) work over: the
+// directory you are standing in, so they act on what you are looking at rather
+// than always the whole scan. At the top of the tree that is the scan root, so
+// nothing changes there. It falls back to the scan root when there is no current
+// directory — a saved scan not yet entered, say.
+func (m *model) searchRoot() fs.Item {
+	if m.currentDir != nil {
+		return m.currentDir
+	}
+	return m.topDir
+}
+
+// searchScopeSuffix names the subtree a T/F result covers, when it is not the
+// whole scan. At the top of the tree it is empty — "largest files" reads as the
+// whole thing, which it is — and inside a directory it says which, so a short
+// list does not read as a bug.
+func (m *model) searchScopeSuffix() string {
+	if m.currentDir == nil || m.currentDir == m.topDir {
+		return ", any depth"
+	}
+	return " under " + m.currentDir.GetName() + ", any depth"
+}
+
 func (m *model) items() []fs.Item {
 	if m.filtered != nil {
 		return m.filtered

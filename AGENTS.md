@@ -110,8 +110,8 @@ doc written there would be describing a tree that gets overwritten from upstream
 **cdu-owned — ours to change freely.** New directories, so they cannot conflict:
 
     charm/  internal/theme/  internal/config/  internal/trash/
-    internal/selfupdate/  build/cdu.go  scripts/  docs/  AGENTS.md
-    NOTICE  UPSTREAM_VERSION
+    internal/dup/  internal/selfupdate/  build/cdu.go  scripts/  docs/
+    AGENTS.md  NOTICE  UPSTREAM_VERSION
 
 `UPSTREAM_VERSION` records which gdu tag the engine is at. It is the single source
 of truth for the `+gduA.B.C` build metadata and for the upstream watcher — update
@@ -188,6 +188,7 @@ on the same tree; the bytes must match.
 - `charm/AGENTS.md` — the default Bubble Tea interface.
 - `internal/theme/AGENTS.md` — the colour tokens, the five themes, and yours.
 - `internal/config/AGENTS.md` — where the config lives, and inheriting gdu's.
+- `internal/dup/AGENTS.md` — finding byte-identical files (the one content read).
 - `internal/trash/AGENTS.md` — recoverable deletes, per OS, CGO-free.
 - `docs/AGENTS.md` — the brief, design mocks, and architecture/decision records.
 - `scripts/AGENTS.md` — the upstream rename and sync tooling.

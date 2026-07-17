@@ -26,6 +26,8 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `topfiles.go` — `T`: the largest files anywhere in the scan.
 - `help.go` — `?`: every key on one screen.
 - `cancel.go` — `esc` during a scan.
+- `duplicates.go` — `F`: the duplicate search, its screen, and the browser mark.
+- `find.go` — `f`: the tree-wide filename search and its results list.
 - `icons.go` — the icon cell: markers by default, Nerd Font glyphs behind `--icons`.
 - `icons_table.go` — **generated** from exa's `icons.rs`; do not hand-edit.
 - `style.go` — the palette and the resolved Lipgloss styles.
@@ -202,6 +204,18 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 
 ### Filter, viewer, mouse
 
+- **`/` filters, `f` finds — two tools, two names, on purpose.** `/` is a fuzzy,
+  live, *local* narrowing of the current directory: it rebuilds `m.filtered` as
+  you type and only ever sees this directory's rows, which is why `/` `*.mkv`
+  found nothing (`*` is a literal to a fuzzy match, and the file was a directory
+  down). `f` is an *exact, tree-wide* search from `searchRoot()` that opens a
+  results list shaped like the largest-files screen. Do not merge them.
+- **`f`'s match is glob when there is a wildcard, case-insensitive substring
+  otherwise.** Bare `mkv` finds every `.mkv`; `*.mkv` is a glob; both ignore case,
+  because a search that missed `IMG.JPG` for `img` would feel broken. `matchName`
+  is the whole rule and is pinned on its own.
+- **`f` walks names only, so it runs on the render loop** — like `T`, unlike `F`.
+  It never opens a file, so there is no I/O to hang on and no goroutine.
 - **The filter is a view, never a change to the tree.** `applyFilter` only rebuilds
   `m.filtered`; a delete under a filter still finds and removes the real item, from
   both lists. `m.items()` is the single accessor everything moves over. Navigating
@@ -251,6 +265,17 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   seam between the two places that describe keys: it cannot check the words are
   still true, but a key can never be silently undocumented. It caught one within a
   minute of being written.
+- **`F` finds duplicates, and it reads files — the only feature that does.** The
+  search runs off the render loop (`internal/dup`), can be cancelled with `esc`
+  like a scan, and shares the scan's cancel flag. A duplicated file is marked in
+  the browser with `dupMark` (`▲`) in the accent, and the whole name takes the
+  accent so it stands out of a long list rather than hiding a glyph at the end of
+  a truncated name. `dropDuplicate` dissolves a group once one copy is left — a
+  file is a duplicate of nothing. The mark is a glyph as well as a colour, so it
+  survives mono and a colourblind eye, like the `H`/`!` flags.
+- **`dupMark` is a geometric triangle, not `⚠`.** runewidth measures both as one
+  cell, but `⚠` is in the emoji block and a colour terminal may draw it two cells
+  wide, shifting the row. Never use an emoji-range glyph in a laid-out cell.
 
 ### Colour and unicode
 
@@ -299,7 +324,8 @@ there is something to undo.
 Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
 menu, `t` column menu (or direct `a`/`B`/`c`/`m`; `t` then `s` saves the view),
 `v` view file, `d` trash, `D` delete permanently, `e` empty a file, `u` undo the
-last trash, `r` rescan, `T` largest files, `?` help, `esc` back / cancel a scan.
+last trash, `r` rescan, `f` find (tree-wide), `T` largest files, `F` find
+duplicates, `?` help, `esc` back / cancel a scan.
 **`help.go` is the list that has to be right** — add a binding there, or the
 drift test fails.
 

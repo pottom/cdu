@@ -158,6 +158,12 @@ func (m *model) View() string {
 		return m.viewTop()
 	case screenHelp:
 		return m.viewHelp()
+	case screenHashing:
+		return m.viewHashing()
+	case screenDup:
+		return m.viewDup()
+	case screenFind:
+		return m.viewFind()
 	}
 	return ""
 }
@@ -375,10 +381,19 @@ func (m *model) headerPath() string {
 		return "select a device to analyze"
 	}
 	if m.scr == screenTop {
-		return fmt.Sprintf("largest %d files, any depth", len(m.topFiles))
+		return "largest files" + m.searchScopeSuffix()
 	}
 	if m.scr == screenHelp {
 		return "every key, one screen"
+	}
+	if m.scr == screenHashing {
+		return "reading files to compare"
+	}
+	if m.scr == screenDup {
+		return "duplicate files" + m.searchScopeSuffix()
+	}
+	if m.scr == screenFind {
+		return fmt.Sprintf("%d matching “%s”%s", len(m.findResults), m.findPattern, m.searchScopeWord())
 	}
 	if m.scr == screenScanning {
 		// -d comes up on this screen while the mount table is being read, and has no
@@ -534,6 +549,12 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	case 'H':
 		name += " ⇉"
 	}
+	// A file the duplicate search matched carries a mark of its own. It is a glyph
+	// too, for the same reason — the colour below is a second cue, not the only
+	// one — so it survives mono and reads for a colourblind eye.
+	if m.isDuplicate(item) {
+		name += " " + dupMark
+	}
 	if removing {
 		// The word, not just the spinner: the state has to survive --no-color and a
 		// terminal too narrow for the icon column.
@@ -565,6 +586,10 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	switch {
 	case removing:
 		nameStyle, iconStyle = m.st.dim, m.st.accent
+	case m.isDuplicate(item):
+		// The mark and the whole name take the accent, so a duplicate stands out of
+		// a long list rather than hiding a glyph at the end of a truncated name.
+		nameStyle, iconStyle = m.st.accent, m.st.accent
 	case item.IsDir():
 		nameStyle, iconStyle = m.st.dirName, m.st.accent
 	}
@@ -663,9 +688,10 @@ var (
 		{key: "→", label: "open"},
 		{key: "←", label: "back"},
 		{key: "/", label: "filter", drop: 3},
+		{key: "f", label: "find", drop: 4},
 		{key: "v", label: "view", drop: 4},
 		{key: "s", label: "sort", drop: 2},
-		{key: "t", label: "cols", drop: 5},
+		{key: "t", label: "cols", drop: 4},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 3},
 		{key: "r", label: "rescan", drop: 5},
@@ -707,6 +733,29 @@ var (
 		{key: "↑↓", label: "scroll"},
 		{key: "?", label: "close"},
 		{key: "esc", label: "back"},
+	}
+	hashingKeys = []keyHint{
+		{key: "esc", label: "cancel"},
+		{key: "q", label: "quit"},
+	}
+	dupKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "↵", label: "reveal"},
+		{key: "v", label: "view", drop: 3},
+		{key: "d", label: "trash", drop: 1},
+		{key: "D", label: "delete", drop: 2},
+		{key: "esc", label: "back"},
+		{key: "q", label: "quit", drop: 4},
+	}
+	// findKeys is the results screen; the input prompt has its own footer.
+	findKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "↵", label: "reveal"},
+		{key: "v", label: "view", drop: 3},
+		{key: "d", label: "trash", drop: 1},
+		{key: "D", label: "delete", drop: 2},
+		{key: "esc", label: "back"},
+		{key: "q", label: "quit", drop: 4},
 	}
 	topKeys = []keyHint{
 		{key: "↑↓", label: "move"},
@@ -775,6 +824,9 @@ func (m *model) viewFooter() string {
 	if m.filtering {
 		return m.viewFilterFooter()
 	}
+	if m.finding {
+		return m.viewFindFooter()
+	}
 
 	keys := m.browseFooterKeys()
 	switch {
@@ -786,6 +838,12 @@ func (m *model) viewFooter() string {
 		keys = topKeys
 	case m.scr == screenHelp:
 		keys = helpKeys
+	case m.scr == screenHashing:
+		keys = hashingKeys
+	case m.scr == screenDup:
+		keys = dupKeys
+	case m.scr == screenFind:
+		keys = findKeys
 	case m.scr == screenConfirm:
 		keys = confirmKeys
 	case m.sortPending:

@@ -37,7 +37,8 @@ var helpGroups = []helpGroup{
 		{"← h", "go to parent"},
 		{"g G", "jump to top / bottom"},
 		{"pgup pgdn", "page"},
-		{"/", "filter this directory, fuzzy"},
+		{"/", "filter this directory (fuzzy, live)"},
+		{"f", "find files by name, any depth (*.mkv)"},
 	}},
 	{"Change the disk", []helpEntry{
 		{"d", "trash it — does not free space"},
@@ -60,6 +61,7 @@ var helpGroups = []helpGroup{
 	}},
 	{"Elsewhere", []helpEntry{
 		{"T", "the largest files, any depth"},
+		{"F", "find duplicate files (reads them)"},
 		{"v", "view a file"},
 		{"?", "this screen"},
 		{"esc", "back — and cancel a running scan"},

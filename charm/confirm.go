@@ -76,8 +76,22 @@ type undoDoneMsg struct {
 // so it asks the item where it lives — which is exactly the question that list
 // exists to answer.
 func (m *model) target() (item, parent fs.Item) {
-	if m.scr == screenTop {
+	//nolint:exhaustive // every other screen falls through to the browser's row
+	switch m.scr {
+	case screenTop:
 		it := m.selectedTop()
+		if it == nil {
+			return nil, nil
+		}
+		return it, it.GetParent()
+	case screenDup:
+		it := m.selectedDup()
+		if it == nil {
+			return nil, nil
+		}
+		return it, it.GetParent()
+	case screenFind:
+		it := m.selectedFind()
 		if it == nil {
 			return nil, nil
 		}
@@ -311,6 +325,8 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 		msg.parent.RemoveFile(msg.item)
 		m.dropRow(msg.item)
 		m.dropTopFile(msg.item)
+		m.dropDuplicate(msg.item)
+		m.dropFindResult(msg.item)
 	case actionEmpty:
 		msg.parent.RemoveFile(msg.item)
 		msg.parent.AddFile(emptiedFile(msg.item, msg.parent))
