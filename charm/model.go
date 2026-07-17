@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/internal/dup"
 	"github.com/pottom/cdu/pkg/device"
 	"github.com/pottom/cdu/pkg/fs"
 )
@@ -24,6 +25,12 @@ const (
 	screenDisks
 	screenTop
 	screenHelp
+	// screenHashing is the spinner while dup.Find reads the candidate files. It is
+	// its own screen, not the scan spinner, because it comes back with a different
+	// message and cancels back to a different place.
+	screenHashing
+	// screenDup is the duplicate groups, once found.
+	screenDup
 	screenError
 )
 
@@ -175,6 +182,16 @@ type model struct {
 	// help is reachable from all of them.
 	helpFrom   screen
 	helpOffset int
+
+	// dupGroups is the result of the last duplicate search (F): sets of
+	// byte-identical files, most reclaimable first. dupRows is that flattened for
+	// the screen — a header per group, then its files. dupMarked is every file in
+	// a group, for the ▲ the browser draws beside it.
+	dupGroups []dup.Group
+	dupRows   []dupRow
+	dupMarked map[fs.Item]bool
+	dupCursor int
+	dupOffset int
 }
 
 type (
@@ -357,7 +374,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
-		if m.scr != screenScanning {
+		if m.scr != screenScanning && m.scr != screenHashing {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -383,6 +400,9 @@ func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case disksMsg:
 		m.applyDisks(msg)
 		return m, nil
+
+	case dupDoneMsg:
+		return m.applyDupDone(msg)
 
 	case deleteDoneMsg:
 		cmd := m.applyDelete(msg)
@@ -447,6 +467,12 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.scr == screenTop {
 		return m.handleTopKey(msg)
 	}
+	if m.scr == screenHashing {
+		return m.handleHashingKey(msg)
+	}
+	if m.scr == screenDup {
+		return m.handleDupKey(msg)
+	}
 	if m.scr != screenBrowse {
 		return m, nil
 	}
@@ -488,6 +514,8 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "T":
 		return m.collectTopFiles()
+	case "F":
+		return m.findDuplicates()
 	case "r":
 		cmd := m.rescan()
 		return m, cmd

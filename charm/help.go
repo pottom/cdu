@@ -60,6 +60,7 @@ var helpGroups = []helpGroup{
 	}},
 	{"Elsewhere", []helpEntry{
 		{"T", "the largest files, any depth"},
+		{"F", "find duplicate files (reads them)"},
 		{"v", "view a file"},
 		{"?", "this screen"},
 		{"esc", "back — and cancel a running scan"},
