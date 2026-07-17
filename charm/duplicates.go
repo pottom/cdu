@@ -326,11 +326,13 @@ func (m *model) viewDupRow(r *dupRow, selected bool) string {
 }
 
 // viewDupHeader labels a group by what it costs: how many copies, each how big,
-// and how much deleting the extras would free.
+// and how much deleting the extras would free. It leads with the same ▲ that
+// marks these files in the browser, so the mark you learn here is the mark you
+// look for there.
 func (m *model) viewDupHeader(g *dup.Group) string {
-	label := fmt.Sprintf("%d copies · %s each · reclaim %s",
-		len(g.Files), m.ui.formatSize(g.Size), m.ui.formatSize(g.Reclaimable()))
-	return m.st.dirName.Render(clipTo(" "+label, m.width))
+	label := fmt.Sprintf("%s %d copies · %s each · reclaim %s",
+		dupMark, len(g.Files), m.ui.formatSize(g.Size), m.ui.formatSize(g.Reclaimable()))
+	return m.st.accent.Render(clipTo(" "+label, m.width))
 }
 
 func (m *model) viewDupFile(r *dupRow, selected bool) string {
