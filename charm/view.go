@@ -683,23 +683,23 @@ type keyHint struct {
 // Sorting costs one hint here rather than four, because the fields are asked for
 // only once s has been pressed — and then the footer explains nothing else.
 var (
+	// The footer shows the essentials and the way to everything else. It used to
+	// list a dozen keys and the fitKeys logic quietly dropped most of them on any
+	// real terminal — including ? itself, so the one key that reveals the rest was
+	// the first to go. Now it shows what you navigate with, the commonest action,
+	// and ? — which opens the screen that has every key on it. Discover the rest
+	// there, not by squinting at a truncated footer.
 	browseKeys = []keyHint{
 		{key: "↑↓", label: "move"},
 		{key: "→", label: "open"},
 		{key: "←", label: "back"},
-		{key: "/", label: "filter", drop: 3},
-		{key: "f", label: "find", drop: 4},
-		{key: "v", label: "view", drop: 4},
-		{key: "s", label: "sort", drop: 2},
-		{key: "t", label: "cols", drop: 4},
-		{key: "d", label: "trash", drop: 1},
-		{key: "D", label: "delete", drop: 3},
-		{key: "r", label: "rescan", drop: 5},
+		{key: "d", label: "trash", drop: 2},
+		{key: "?", label: "help", drop: 1},
 		{key: "q", label: "quit"},
 	}
 	// undoKey appears only when there is something to undo — see browseFooterKeys.
 	// It sits after delete, which is where the eye is after a delete.
-	undoKey = keyHint{key: "u", label: "undo", drop: 5}
+	undoKey = keyHint{key: "u", label: "undo", drop: 3}
 	// The whole footer becomes the menu: while a mode is on, nothing else is worth
 	// saying, and a mode nobody can see is a trap.
 	sortMenuKeys = []keyHint{
@@ -727,6 +727,7 @@ var (
 		{key: "↑↓", label: "move"},
 		{key: "↵", label: "analyze"},
 		{key: "r", label: "reread", drop: 3},
+		{key: "?", label: "help", drop: 2},
 		{key: "q", label: "quit"},
 	}
 	helpKeys = []keyHint{
@@ -744,6 +745,7 @@ var (
 		{key: "v", label: "view", drop: 3},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 2},
+		{key: "?", label: "help", drop: 4},
 		{key: "esc", label: "back"},
 		{key: "q", label: "quit", drop: 4},
 	}
@@ -754,6 +756,7 @@ var (
 		{key: "v", label: "view", drop: 3},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 2},
+		{key: "?", label: "help", drop: 4},
 		{key: "esc", label: "back"},
 		{key: "q", label: "quit", drop: 4},
 	}
@@ -763,6 +766,7 @@ var (
 		{key: "v", label: "view", drop: 3},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 2},
+		{key: "?", label: "help", drop: 4},
 		{key: "esc", label: "back"},
 		{key: "q", label: "quit", drop: 4},
 	}
@@ -813,7 +817,7 @@ func (m *model) browseFooterKeys() []keyHint {
 	keys := make([]keyHint, 0, len(browseKeys)+1)
 	for _, k := range browseKeys {
 		keys = append(keys, k)
-		if k.key == "D" {
+		if k.key == "d" {
 			keys = append(keys, undoKey)
 		}
 	}

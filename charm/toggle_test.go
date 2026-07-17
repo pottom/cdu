@@ -37,7 +37,11 @@ func TestTheColumnMenuIsDiscoverableAndSwallowsEveryKey(t *testing.T) {
 	m.width, m.height, m.haveSize = 120, 24, true
 	m.scr = screenBrowse
 
-	assert.Contains(t, m.viewFooter(), "cols", "t must be discoverable")
+	// The footer no longer lists every key — it shows the essentials and ?, which
+	// opens the screen that has every key on it. So the t menu is discovered
+	// through help, not the footer.
+	assert.Contains(t, m.viewFooter(), "help", "? must be in the footer, as the way to everything else")
+	assert.Contains(t, allHelpText(), "columns", "and the t menu must be documented in the help")
 
 	m = press(t, m, "t")
 	require.True(t, m.colPending)

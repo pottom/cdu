@@ -59,7 +59,10 @@ func TestHelpCoversEveryFooterKey(t *testing.T) {
 // Every binding the browse screen actually handles has to be in the help, not
 // just the ones the footer has room for. The footer sheds hints on a narrow
 // terminal; the help is where they all live.
-func TestHelpDocumentsTheKeysThatDoThings(t *testing.T) {
+// allHelpText is the help's whole text, for asserting a key or a word is
+// documented — the footer no longer lists everything, so help is where a binding
+// has to appear.
+func allHelpText() string {
 	var text strings.Builder
 	for _, g := range helpGroups {
 		text.WriteString(g.title + "\n")
@@ -67,7 +70,11 @@ func TestHelpDocumentsTheKeysThatDoThings(t *testing.T) {
 			text.WriteString(e.keys + " " + e.what + "\n")
 		}
 	}
-	help := text.String()
+	return text.String()
+}
+
+func TestHelpDocumentsTheKeysThatDoThings(t *testing.T) {
+	help := allHelpText()
 
 	for _, key := range []string{
 		"d", "D", "e", "u", "r", // the disk
