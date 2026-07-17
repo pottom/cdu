@@ -1,6 +1,7 @@
 package charm
 
 import (
+	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -191,6 +192,9 @@ type model struct {
 	topCursor int
 	topOffset int
 
+	// homeDir is the user's home, resolved once, for shortening title paths to ~.
+	homeDir string
+
 	// helpFrom is the screen ? was pressed on, and the one it returns to. The
 	// help is reachable from all of them.
 	helpFrom   screen
@@ -224,6 +228,14 @@ func newModel(ui *UI) *model {
 	st := newStyles(&ui.theme, ui.UseColors)
 	sp.Style = st.accent
 
+	// Resolved once: a title path is home-shortened on every frame, and
+	// os.UserHomeDir is a syscall not worth repeating. An error leaves it empty,
+	// which shortPath treats as "no home to collapse" — the full path, not a crash.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+
 	return &model{
 		ui:      ui,
 		spinner: sp,
@@ -231,6 +243,7 @@ func newModel(ui *UI) *model {
 		st:      st,
 		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
+		homeDir: home,
 		// Where the modal and the viewer return to when they close. They are set
 		// again on the way in, but the zero value of a screen is screenScanning —
 		// so anything that missed a step would close onto the scan screen, which is
@@ -625,15 +638,27 @@ func (m *model) searchRoot() fs.Item {
 	return m.topDir
 }
 
-// searchScopeSuffix names the subtree a T/F result covers, when it is not the
-// whole scan. At the top of the tree it is empty — "largest files" reads as the
-// whole thing, which it is — and inside a directory it says which, so a short
-// list does not read as a bug.
+// searchScopeSuffix names the subtree a T/F result covers: the full path it
+// searched under, home-shortened. It always says where, root or not, so the
+// title answers "what am I looking at, and from where" without the reader having
+// to remember which directory they were in when they pressed the key.
 func (m *model) searchScopeSuffix() string {
-	if m.currentDir == nil || m.currentDir == m.topDir {
+	root := m.searchRoot()
+	if root == nil {
 		return ", any depth"
 	}
-	return " under " + m.currentDir.GetName() + ", any depth"
+	return " under " + m.shortPath(root.GetPath()) + ", any depth"
+}
+
+// shortPath collapses the home directory to ~, the way a person names a path.
+func (m *model) shortPath(path string) string {
+	if m.homeDir != "" && path == m.homeDir {
+		return "~"
+	}
+	if m.homeDir != "" && strings.HasPrefix(path, m.homeDir+"/") {
+		return "~" + path[len(m.homeDir):]
+	}
+	return path
 }
 
 func (m *model) items() []fs.Item {

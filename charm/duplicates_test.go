@@ -317,7 +317,7 @@ func TestFindDuplicatesSearchesFromTheCurrentDirectory(t *testing.T) {
 	scoped := runSearch(t, whole)
 	require.Len(t, scoped.dupGroups, 1, "inside sub, only sub's duplicates")
 	assert.Contains(t, scoped.dupGroups[0].Files[0].GetName(), "deep")
-	assert.Contains(t, scoped.headerPath(), "under sub", "the header says which subtree it searched")
+	assert.Contains(t, scoped.headerPath(), "/sub", "the header names the subtree it searched")
 }
 
 // The same for the largest-files screen.
@@ -341,5 +341,5 @@ func TestLargestFilesSearchesFromTheCurrentDirectory(t *testing.T) {
 	for _, f := range m.topFiles {
 		assert.NotEqual(t, "huge.bin", f.GetName(), "a file outside the current subtree must not appear")
 	}
-	assert.Contains(t, m.headerPath(), "under sub")
+	assert.Contains(t, m.headerPath(), "/sub")
 }

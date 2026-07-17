@@ -341,14 +341,37 @@ func (m *model) viewHeader() string {
 // chopped off tells you nothing about where you are.
 func (m *model) viewBrand() string {
 	const wordmark = "cdu ✦"
-	const tagline = "charm disk usage"
 
+	// Everywhere but the browser, the header path is a *title* — what you are
+	// looking at, "duplicate files under ~/Work" — so it leads, right after the
+	// wordmark, bright, tagline dropped. On the browser it is a *breadcrumb* —
+	// where you are — so it stays quiet on the right and the tagline fills the gap.
+	if m.scr != screenBrowse {
+		return m.viewTitle(wordmark, m.headerPath())
+	}
+	return m.viewBreadcrumb(wordmark, "charm disk usage", m.headerPath())
+}
+
+// viewTitle puts the wordmark and a bright title on the left. A title that will
+// not fit keeps its tail — the specific end (the pattern, the directory) matters
+// more than the word "duplicate" it starts with.
+func (m *model) viewTitle(wordmark, title string) string {
+	if title == "" {
+		return m.st.accent.Render(runewidth.Truncate(wordmark, max(m.width, 1), ""))
+	}
+	full := wordmark + "  " + title
+	if runewidth.StringWidth(full) > m.width {
+		return m.st.dirName.Render(runewidth.FillRight(middleTruncate(title, max(m.width, 1)), max(m.width, 1)))
+	}
+	pad := m.width - runewidth.StringWidth(full)
+	return m.st.accent.Render(wordmark) + "  " + m.st.dirName.Render(title) + strings.Repeat(" ", max(pad, 0))
+}
+
+func (m *model) viewBreadcrumb(wordmark, tagline, path string) string {
 	left := wordmark
 	if m.width >= minWidthForTagline {
 		left += "  " + tagline
 	}
-
-	path := m.headerPath()
 
 	const gap = 2
 	avail := m.width - runewidth.StringWidth(left) - gap
@@ -359,9 +382,6 @@ func (m *model) viewBrand() string {
 	path = middleTruncate(path, avail)
 	pad := m.width - runewidth.StringWidth(left) - runewidth.StringWidth(path)
 
-	// The wordmark and the tagline are one plain string until here, so that the
-	// padding is measured against columns rather than escape bytes; only now do
-	// they get their own styles.
 	brand := m.st.accent.Render(wordmark)
 	if m.width >= minWidthForTagline {
 		brand += "  " + m.st.dim.Render(tagline)
