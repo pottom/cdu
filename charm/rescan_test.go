@@ -81,7 +81,7 @@ func TestAnalyzingTwoDevicesInARowDoesNotPanic(t *testing.T) {
 	}})
 	m.applyDisks(disksCmd(m.ui)().(disksMsg))
 
-	for i := range m.disks {
+	for _, i := range m.selectableDiskRows() {
 		m.diskCursor = i
 		next, cmd := m.analyzeDisk()
 		m = next.(*model)
@@ -116,7 +116,9 @@ func TestEveryScanGoesThroughStartScan(t *testing.T) {
 	require.NotNil(t, m.Init())
 	require.NotNil(t, m.rescan())
 
-	m.disks = device.Devices{{Name: "/dev/x", MountPoint: dir, Size: 1 << 30, Free: 1 << 29}}
+	m.applyDisks(disksMsg{devices: device.Devices{
+		{Name: "/dev/sdz1", MountPoint: dir, Size: 1 << 30, Free: 1 << 29},
+	}})
 	_, cmd := m.analyzeDisk()
 	require.NotNil(t, cmd)
 

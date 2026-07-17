@@ -1,7 +1,8 @@
 package charm
 
 import (
-	"sort"
+	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-runewidth"
@@ -52,6 +53,34 @@ type diskLayout struct {
 	bar   bool
 }
 
+// treeGlyphs are the shapes the tree is drawn with. They cost two columns, and
+// they are what says a volume belongs to the disk above it rather than being a
+// disk of its own.
+const (
+	treeWidth  = 2
+	treeBranch = "├ "
+	treeLast   = "└ "
+
+	asciiTreeBranch = "| "
+	asciiTreeLast   = "` "
+)
+
+// treePrefix is the two columns before a device's icon: the branch it hangs off,
+// or nothing when it hangs off nothing.
+func (m *model) treePrefix(r *diskRow) string {
+	if r.depth == 0 {
+		return ""
+	}
+	branch, last := treeBranch, treeLast
+	if m.ui.noUnicode {
+		branch, last = asciiTreeBranch, asciiTreeLast
+	}
+	if r.last {
+		return last
+	}
+	return branch
+}
+
 func (m *model) diskLayout() diskLayout {
 	l := diskLayout{}
 
@@ -79,12 +108,25 @@ func (m *model) diskLayout() diskLayout {
 		}
 	}
 
+	// The Device column carries the tree branch and the icon as well as the name,
+	// so it is given their width on top of its share. Paying for the indent out of
+	// the name is how /dev/disk3s1 and /dev/disk3s5 both became "/de…3s1" — the
+	// same string for two volumes, in the column you tell them apart by.
+	decor := treeWidth
+	if m.width >= minWidthForIcon {
+		decor += iconWidth
+	}
+
 	rest := m.width - fixed
-	if rest >= minDiskNameWidth+1+minDiskMountWidth {
-		// Both elastic columns fit. The mount point gets the larger share for the
-		// same reason it outranks the bar.
-		l.name = max(rest/3, minDiskNameWidth)
+	if rest >= minDiskNameWidth+decor+1+minDiskMountWidth {
+		// Both elastic columns fit. The mount point gets the larger share of what is
+		// left, for the same reason it outranks the bar.
+		l.name = max(rest/3+decor, minDiskNameWidth+decor)
 		l.mount = rest - l.name - 1
+		if l.mount < minDiskMountWidth {
+			l.mount = minDiskMountWidth
+			l.name = rest - l.mount - 1
+		}
 		return l
 	}
 	l.name = max(rest, minDiskNameWidth)
@@ -116,26 +158,20 @@ func (m *model) applyDisks(msg disksMsg) {
 		return
 	}
 
-	// Biggest first, like everything else here. gdu leaves them in mount-table
-	// order, which is the order the kernel happens to hold them in and means
-	// nothing to the person looking for the full disk.
-	devices := make(device.Devices, len(msg.devices))
-	copy(devices, msg.devices)
-	sort.Slice(devices, func(i, j int) bool {
-		return devices[i].GetUsage() > devices[j].GetUsage()
-	})
-
-	m.disks = devices
+	m.disks = msg.devices
+	m.diskRows = groupDisks(msg.devices)
 	m.diskCursor, m.diskOffset = 0, 0
+	m.moveDiskCursor(0) // land on something selectable rather than on a header
 	m.scr = screenDisks
 }
 
-// selectedDisk is the device under the cursor, or nil when the list is empty.
+// selectedDisk is the device under the cursor, or nil when there is none — an
+// empty table, or a cursor that has nowhere selectable to be.
 func (m *model) selectedDisk() *device.Device {
-	if m.diskCursor < 0 || m.diskCursor >= len(m.disks) {
+	if m.diskCursor < 0 || m.diskCursor >= len(m.diskRows) {
 		return nil
 	}
-	return m.disks[m.diskCursor]
+	return m.diskRows[m.diskCursor].dev
 }
 
 // analyzeDisk scans the device under the cursor. The device list stays in
@@ -164,9 +200,9 @@ func (m *model) handleDisksKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyDown, "j":
 		m.moveDiskCursor(1)
 	case keyHome, "g":
-		m.moveDiskCursor(-len(m.disks))
+		m.moveDiskCursor(-len(m.diskRows))
 	case keyEnd, "G":
-		m.moveDiskCursor(len(m.disks))
+		m.moveDiskCursor(len(m.diskRows))
 	case keyPgUp:
 		m.moveDiskCursor(-m.visibleLines())
 	case keyPgDown:
@@ -179,20 +215,51 @@ func (m *model) handleDisksKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// moveDiskCursor moves by delta and lands on something selectable.
+//
+// A disk header is not selectable: a container has no mount point, so there is
+// nothing to analyze. Stopping on one would be a cursor that does nothing when
+// you press enter, so the cursor steps over them — in the direction of travel,
+// and then back the other way if it ran out of table.
 func (m *model) moveDiskCursor(delta int) {
-	if len(m.disks) == 0 {
+	if len(m.diskRows) == 0 {
 		return
 	}
-	m.diskCursor = min(max(m.diskCursor+delta, 0), len(m.disks)-1)
+	want := min(max(m.diskCursor+delta, 0), len(m.diskRows)-1)
+
+	step := 1
+	if delta < 0 {
+		step = -1
+	}
+	m.diskCursor = m.nextSelectableDisk(want, step)
 
 	// One window, same rules as the list: keep the cursor on screen without
-	// scrolling further than it has to.
+	// scrolling further than it has to. The header above it is worth keeping in
+	// view — a volume with no disk over it is the thing the tree exists to avoid —
+	// so scrolling up stops one row early where it can.
 	height := max(m.visibleLines(), 1)
-	m.diskOffset = min(m.diskOffset, m.diskCursor)
+	top := m.diskCursor
+	if top > 0 && m.diskRows[top-1].isHeader() {
+		top--
+	}
+	m.diskOffset = min(m.diskOffset, top)
 	if m.diskCursor >= m.diskOffset+height {
 		m.diskOffset = m.diskCursor - height + 1
 	}
-	m.diskOffset = min(max(m.diskOffset, 0), max(len(m.disks)-height, 0))
+	m.diskOffset = min(max(m.diskOffset, 0), max(len(m.diskRows)-height, 0))
+}
+
+// nextSelectableDisk finds the nearest row that can actually be analyzed,
+// looking in the direction of travel first.
+func (m *model) nextSelectableDisk(from, step int) int {
+	for _, dir := range []int{step, -step} {
+		for i := from; i >= 0 && i < len(m.diskRows); i += dir {
+			if !m.diskRows[i].isHeader() {
+				return i
+			}
+		}
+	}
+	return from // nothing but headers, which cannot happen: a header has volumes
 }
 
 // cell fits a string into exactly n columns, left-aligned. Both halves matter:
@@ -250,11 +317,46 @@ func (m *model) viewDisksHeader() string {
 	return m.st.dim.Render(clipTo(line, m.width))
 }
 
+// diskNameCell is the Device column: the tree branch, the icon, and the name, in
+// exactly l.name columns however much of it there is.
+//
+// The column's total width is fixed even though the prefix is not — a volume
+// spends two of its columns on the branch and has that much less name, which is
+// what an indent *is*. Letting the column grow instead would push Size two
+// columns right on every volume and the table would stagger.
+func (m *model) diskNameCell(r *diskRow, width int) string {
+	prefix := m.treePrefix(r)
+	icon := m.diskIcon(r)
+	rest := width - runewidth.StringWidth(prefix) - runewidth.StringWidth(icon)
+	return prefix + icon + cellPath(diskRowName(r), max(rest, 0))
+}
+
+// diskRowName is what goes in the Device column.
+//
+// A device under a disk header loses its /dev/ — five columns of prefix that
+// every row has and none of them needs, in the column that is already paying for
+// the tree and the icon. The tree says which disk it is on, which is the only
+// thing /dev/ was contributing. Anything ungrouped keeps its name whole, because
+// there is nothing above it to supply the context: `tmpfs` and `map auto_home`
+// are the name.
+func diskRowName(r *diskRow) string {
+	if r.dev == nil {
+		return r.disk
+	}
+	if r.depth > 0 {
+		if short, ok := strings.CutPrefix(r.dev.Name, "/dev/"); ok {
+			return short
+		}
+	}
+	return r.dev.Name
+}
+
 // diskRowPlain is the row as bare text, at exactly the width the layout says.
 // Everything is measured here, where the string's length is what it looks like;
 // the styled version below is built from the same pieces, never measured.
-func (m *model) diskRowPlain(dev *device.Device, l *diskLayout) string {
-	s := cellPath(dev.Name, l.name) + " " + cellRight(m.ui.formatSize(dev.Size), diskSizeWidth)
+func (m *model) diskRowPlain(r *diskRow, l *diskLayout) string {
+	dev := r.dev
+	s := m.diskNameCell(r, l.name) + " " + cellRight(m.ui.formatSize(dev.Size), diskSizeWidth)
 	if l.used {
 		s += " " + cellRight(m.ui.formatSize(dev.GetUsage()), diskSizeWidth)
 	}
@@ -281,32 +383,65 @@ func diskFrac(dev *device.Device) float64 {
 	return float64(dev.GetUsage()) / float64(dev.Size)
 }
 
-// viewDiskRow is one device, composed as plain text at an exact width and styled
-// after — runewidth counts escape bytes as columns, so a styled string cut to
-// the terminal loses most of itself.
-func (m *model) viewDiskRow(dev *device.Device, selected bool) string {
+// viewDiskHeaderRow is a physical disk: a label over its volumes, with no
+// numbers of its own.
+//
+// It has none to give. A container is not in the mount table — only what is
+// mounted from it is — so there is no size to report here that is not already on
+// the rows below. What it can say is *why* those rows look the way they do: four
+// volumes each honestly reporting 460 GiB are one pool seen four times, and
+// saying so is the entire reason this row exists.
+func (m *model) viewDiskHeaderRow(r *diskRow) string {
+	l := m.diskLayout()
+
+	note := fmt.Sprintf("%d volume", r.volumes)
+	if r.volumes != 1 {
+		note += "s"
+	}
+	if r.shared {
+		note += " sharing one pool of space"
+	}
+
+	name := m.diskNameCell(r, l.name)
+	gap := max(m.width-1-runewidth.StringWidth(name)-1-runewidth.StringWidth(note), 0)
+	if gap == 0 {
+		// No room to say why. The name still marks where the group starts.
+		return m.st.accent.Render(clipTo(" "+name, m.width))
+	}
+	return m.st.accent.Render(" "+name) + strings.Repeat(" ", gap+1) + m.st.dim.Render(note)
+}
+
+// viewDiskRow is one row of the table, composed as plain text at an exact width
+// and styled after — runewidth counts escape bytes as columns, so a styled
+// string cut to the terminal loses most of itself.
+func (m *model) viewDiskRow(r *diskRow, selected bool) string {
 	if m.width < 1 {
 		return ""
 	}
+	if r.isHeader() {
+		return m.viewDiskHeaderRow(r)
+	}
+
+	dev := r.dev
 	l := m.diskLayout()
 
 	if selected {
 		if m.width < 2 {
 			return m.st.accent.Render("▌") // no room for a marker and anything to mark
 		}
-		return m.viewSelectedDiskRow(dev, &l)
+		return m.viewSelectedDiskRow(r, &l)
 	}
 
 	// Narrower than the columns' own floors add up to. Clip whole rather than
 	// overflow — but without the bar: painting block characters in a text colour
 	// is what made it a white smear rather than a bar.
-	if 1+runewidth.StringWidth(m.diskRowPlain(dev, &l)) > m.width {
+	if 1+runewidth.StringWidth(m.diskRowPlain(r, &l)) > m.width {
 		flat := l
 		flat.bar = false
-		return m.st.dirName.Render(clipTo(" "+m.diskRowPlain(dev, &flat), m.width))
+		return m.st.dirName.Render(clipTo(" "+m.diskRowPlain(r, &flat), m.width))
 	}
 
-	out := " " + m.st.dirName.Render(cellPath(dev.Name, l.name)) +
+	out := " " + m.st.dirName.Render(m.diskNameCell(r, l.name)) +
 		" " + m.st.size.Render(cellRight(m.ui.formatSize(dev.Size), diskSizeWidth))
 	if l.used {
 		out += " " + m.st.dim.Render(cellRight(m.ui.formatSize(dev.GetUsage()), diskSizeWidth))
@@ -339,10 +474,11 @@ func (m *model) viewDiskRow(dev *device.Device, selected bool) string {
 //
 // The file list dodges this by putting the bar on a line of its own; a table
 // with a bar column cannot.
-func (m *model) viewSelectedDiskRow(dev *device.Device, l *diskLayout) string {
+func (m *model) viewSelectedDiskRow(r *diskRow, l *diskLayout) string {
+	dev := r.dev
 	// Everything left of the bar, and everything right of it, as plain text at
 	// exact widths — measured before styling, as always.
-	left := cellPath(dev.Name, l.name) + " " + cellRight(m.ui.formatSize(dev.Size), diskSizeWidth)
+	left := m.diskNameCell(r, l.name) + " " + cellRight(m.ui.formatSize(dev.Size), diskSizeWidth)
 	if l.used {
 		left += " " + cellRight(m.ui.formatSize(dev.GetUsage()), diskSizeWidth)
 	}
@@ -381,20 +517,20 @@ func (m *model) viewSelectedDiskRow(dev *device.Device, l *diskLayout) string {
 func (m *model) viewDiskList() string {
 	lines := m.visibleLines()
 
-	if len(m.disks) == 0 {
+	if len(m.diskRows) == 0 {
 		return padLines(m.st.dim.Render(clipTo("  no mounted devices to show", m.width)), lines)
 	}
 	// Too short for a column header and a device both. The devices are the point;
 	// the header is a label on them.
 	if lines < 2 {
-		return padLines(m.viewDiskRow(m.disks[m.diskCursor], true), lines)
+		return padLines(m.viewDiskRow(&m.diskRows[m.diskCursor], true), lines)
 	}
 
 	height := lines - 1
-	end := min(m.diskOffset+height, len(m.disks))
+	end := min(m.diskOffset+height, len(m.diskRows))
 	rows := make([]string, 0, height)
 	for i := m.diskOffset; i < end; i++ {
-		rows = append(rows, m.viewDiskRow(m.disks[i], i == m.diskCursor))
+		rows = append(rows, m.viewDiskRow(&m.diskRows[i], i == m.diskCursor))
 	}
 	return m.viewDisksHeader() + "\n" + padLines(joinLines(rows), height)
 }

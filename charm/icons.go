@@ -42,6 +42,48 @@ const (
 	asciiMarkerFile = " "
 )
 
+// The device list's own icon cell. A physical disk and a volume on it are
+// different kinds of thing — you can analyze a volume and you cannot analyze a
+// container — so the tree says it by shape and these say it again, for the same
+// reason the cursor row carries a marker as well as a colour.
+const (
+	iconDisk   = "\U000f02ca" // nf-md-harddisk
+	iconVolume = ""          // nf-fae-database
+	// A mount with no disk behind it: tmpfs, devfs, an automount map.
+	iconPseudo = "" // nf-fa-cubes
+
+	markerDisk        = "■"
+	markerVolume      = "▸"
+	asciiMarkerDisk   = "#"
+	asciiMarkerVolume = ">"
+)
+
+// diskIcon is the icon cell for a device-list row: exactly iconWidth columns, or
+// nothing when the terminal cannot hold one.
+func (m *model) diskIcon(r *diskRow) string {
+	if m.width < minWidthForIcon {
+		return ""
+	}
+	switch {
+	case m.ui.noUnicode:
+		if r.isHeader() {
+			return asciiMarkerDisk + " "
+		}
+		return asciiMarkerVolume + " "
+	case m.ui.icons:
+		switch {
+		case r.isHeader():
+			return iconDisk + " "
+		case r.depth == 0:
+			return iconPseudo + " " // not on a disk at all
+		}
+		return iconVolume + " "
+	case r.isHeader():
+		return markerDisk + " "
+	}
+	return markerVolume + " "
+}
+
 // iconFor returns the glyph for an item, without its trailing space.
 //
 // The order is exa's: an exact filename first, then the fact that it is a

@@ -142,7 +142,11 @@ type model struct {
 	// life of the program rather than re-read: it is the scan's parent, and back
 	// at the top of the tree returns to it. Nil means cdu was not started with -d,
 	// which is also what makes back at the top do nothing instead.
-	disks      device.Devices
+	disks device.Devices
+	// diskRows is that table as a tree — a row per physical disk, then a row per
+	// device on it. The cursor indexes this, not disks: what is on screen is what
+	// the arrow keys move over.
+	diskRows   []diskRow
 	diskCursor int
 	diskOffset int
 }

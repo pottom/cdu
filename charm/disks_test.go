@@ -42,6 +42,32 @@ func disksModel(t *testing.T, getter device.DevicesInfoGetter) *model {
 	return m
 }
 
+// diskRowFor finds a device's row in the tree. The renderer and the cursor work
+// on rows now, and a row is not the same index as a mount-table entry — there
+// are disk headers in between.
+func (m *model) diskRowFor(t *testing.T, dev *device.Device) *diskRow {
+	t.Helper()
+	for i := range m.diskRows {
+		if m.diskRows[i].dev == dev {
+			return &m.diskRows[i]
+		}
+	}
+	t.Fatalf("no row for %s", dev.Name)
+	return nil
+}
+
+// selectableDiskRows are the rows the cursor may land on: the devices, not the
+// disk headers.
+func (m *model) selectableDiskRows() []int {
+	var out []int
+	for i := range m.diskRows {
+		if !m.diskRows[i].isHeader() {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
 // -d used to send people to --classic. It opens the device list now.
 func TestListDevicesOpensTheDiskScreen(t *testing.T) {
 	m := disksModel(t, &listGetter{devices: testDevices()})
@@ -61,19 +87,16 @@ func TestListDevicesOpensTheDiskScreen(t *testing.T) {
 	assert.Len(t, m.disks, 3)
 }
 
-// Biggest first, like everything else here. The mount table's own order is
-// whatever the kernel happens to hold, which means nothing to someone looking
-// for the disk that is full.
+// Biggest first, like everything else here — the mount table's own order is
+// whatever the kernel holds, which means nothing to someone looking for the disk
+// that is full. diskgroup_test.go holds the ordering itself; this checks it
+// survives the trip through applyDisks.
 func TestDisksAreSortedByUsage(t *testing.T) {
 	m := disksModel(t, &listGetter{devices: testDevices()})
 	m.applyDisks(disksCmd(m.ui)().(disksMsg))
 
-	require.Len(t, m.disks, 3)
-	for i := 1; i < len(m.disks); i++ {
-		assert.GreaterOrEqual(t, m.disks[i-1].GetUsage(), m.disks[i].GetUsage(),
-			"device %d is used less than the one after it", i-1)
-	}
-	assert.Equal(t, "/dev/disk4s2", m.disks[0].Name, "the 1.4T backup disk is the fullest")
+	require.Equal(t, "disk4", m.diskRows[0].disk, "the 1.4T backup disk's group leads")
+	assert.Equal(t, "/dev/disk4s2", m.diskRows[1].dev.Name)
 }
 
 // A machine that will not report its mounts has nothing to offer -d, and saying
@@ -102,9 +125,11 @@ func TestNoDeviceGetterIsReported(t *testing.T) {
 func TestEnterAnalyzesTheSelectedDevice(t *testing.T) {
 	m := disksModel(t, &listGetter{devices: testDevices()})
 	m.applyDisks(disksCmd(m.ui)().(disksMsg))
-	m = press(t, m, "down") // the second device
+	m = press(t, m, "down") // the second selectable device
 
-	want := m.disks[1]
+	want := m.selectedDisk()
+	require.NotNil(t, want)
+
 	next, cmd := m.Update(key("enter"))
 	m = next.(*model)
 
@@ -146,20 +171,37 @@ func TestBackAtTheTopWithoutDisksDoesNothing(t *testing.T) {
 	assert.Equal(t, screenBrowse, m.scr, "back at the top of a plain scan is not a way out")
 }
 
-func TestDiskCursorClamps(t *testing.T) {
+// The cursor moves over rows and never rests on a disk header. A container has
+// no mount point, so enter on one would do nothing — a cursor you can park
+// somewhere inert is a cursor that looks broken.
+func TestDiskCursorSkipsTheDiskHeaders(t *testing.T) {
 	m := disksModel(t, &listGetter{devices: testDevices()})
 	m.applyDisks(disksCmd(m.ui)().(disksMsg))
 
-	m = press(t, m, "up", "up")
-	assert.Equal(t, 0, m.diskCursor, "up at the top stays at the top")
+	selectable := m.selectableDiskRows()
+	require.Len(t, selectable, 3)
+	require.Greater(t, len(m.diskRows), len(selectable), "this test is pointless without headers")
 
-	m = press(t, m, "down", "down", "down", "down", "down")
-	assert.Equal(t, len(m.disks)-1, m.diskCursor, "down at the bottom stays at the bottom")
+	assert.Equal(t, selectable[0], m.diskCursor, "it must not open on a header")
 
-	m = press(t, m, "home")
-	assert.Equal(t, 0, m.diskCursor)
+	// Every step of the way down, and back up, lands on something selectable.
+	for range len(m.diskRows) + 2 {
+		m = press(t, m, "down")
+		assert.False(t, m.diskRows[m.diskCursor].isHeader(), "landed on a header going down")
+		require.NotNil(t, m.selectedDisk())
+	}
+	assert.Equal(t, selectable[len(selectable)-1], m.diskCursor, "down at the bottom stays")
+
+	for range len(m.diskRows) + 2 {
+		m = press(t, m, "up")
+		assert.False(t, m.diskRows[m.diskCursor].isHeader(), "landed on a header going up")
+	}
+	assert.Equal(t, selectable[0], m.diskCursor, "up at the top stays")
+
 	m = press(t, m, "end")
-	assert.Equal(t, len(m.disks)-1, m.diskCursor)
+	assert.Equal(t, selectable[len(selectable)-1], m.diskCursor)
+	m = press(t, m, "home")
+	assert.Equal(t, selectable[0], m.diskCursor)
 }
 
 // An empty mount table is not an error, but it is not silence either.
@@ -207,12 +249,15 @@ func TestDiskColumnsAreGivenUpInOrder(t *testing.T) {
 	m := disksModel(t, &listGetter{devices: testDevices()})
 	m.applyDisks(disksCmd(m.ui)().(disksMsg))
 
+	backup := m.diskRowFor(t, m.disks[1]) // /dev/disk4s2, on /Volumes/Backup
+
 	m.width = 100
-	wide := m.viewDiskRow(m.disks[0], false)
+	wide := m.viewDiskRow(backup, false)
 	assert.Contains(t, wide, "/Volumes/Backup", "a wide terminal shows the mount point")
+	assert.Contains(t, wide, "disk4s2", "and the whole device name")
 
 	m.width = 40
-	narrow := m.viewDiskRow(m.disks[0], false)
+	narrow := m.viewDiskRow(backup, false)
 	assert.NotContains(t, narrow, "/Volumes/Backup", "a narrow one drops it")
 	assert.Contains(t, narrow, "4s2", "but never the tail of the device name — see below")
 }
@@ -230,8 +275,8 @@ func TestANarrowDeviceNameKeepsItsTail(t *testing.T) {
 
 	for _, width := range []int{30, 40, 50, 60} {
 		m.width = width
-		first := m.viewDiskRow(m.disks[0], false)
-		second := m.viewDiskRow(m.disks[1], false)
+		first := m.viewDiskRow(m.diskRowFor(t, m.disks[0]), false)
+		second := m.viewDiskRow(m.diskRowFor(t, m.disks[1]), false)
 		assert.NotEqual(t, first, second, "at %d columns two devices render identically", width)
 	}
 }
@@ -252,7 +297,7 @@ func TestRowsWithRealSizesAreNotFloored(t *testing.T) {
 	for _, width := range []int{80, 100, 120, 200} {
 		m.width = width
 		l := m.diskLayout()
-		plain := m.diskRowPlain(m.disks[0], &l)
+		plain := m.diskRowPlain(m.diskRowFor(t, m.disks[0]), &l)
 		assert.LessOrEqual(t, 1+runewidth.StringWidth(plain), width,
 			"at %d columns the row overflows its own layout by %d",
 			width, 1+runewidth.StringWidth(plain)-width)
@@ -260,7 +305,7 @@ func TestRowsWithRealSizesAreNotFloored(t *testing.T) {
 		if l.bar {
 			// A bar drawn cell by cell carries many colours. One flat colour across the
 			// whole row is exactly what the bug looked like.
-			row := m.viewDiskRow(m.disks[0], false)
+			row := m.viewDiskRow(m.diskRowFor(t, m.disks[0]), false)
 			assert.Greater(t, strings.Count(row, "\x1b[38;2;"), 4,
 				"at %d columns the bar is not being drawn as a gradient", width)
 		}
@@ -282,7 +327,7 @@ func TestTheCursorRowsBarKeepsItsGradientAndItsBackground(t *testing.T) {
 	m.applyDisks(disksCmd(m.ui)().(disksMsg))
 	m.width = 120
 
-	row := m.viewDiskRow(m.disks[0], true)
+	row := m.viewDiskRow(m.diskRowFor(t, m.disks[0]), true)
 	require.True(t, m.diskLayout().bar, "this test is pointless without a bar")
 
 	assert.Greater(t, strings.Count(row, "\x1b[38;2;"), 4,
@@ -338,6 +383,6 @@ func TestTheFilesystemTypeIsShown(t *testing.T) {
 	m.applyDisks(disksCmd(m.ui)().(disksMsg))
 
 	m.width = 120
-	assert.Contains(t, m.viewDiskRow(m.disks[0], false), "apfs")
+	assert.Contains(t, m.viewDiskRow(m.diskRowFor(t, m.disks[0]), false), "apfs")
 	assert.Contains(t, m.viewDisksHeader(), "Type")
 }
