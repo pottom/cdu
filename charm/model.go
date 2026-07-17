@@ -144,8 +144,7 @@ func newModel(ui *UI) *model {
 	}
 	sp := spinner.New()
 	sp.Spinner = spinner.Spinner{Frames: frames, FPS: time.Second / 8}
-	p := charmPalette()
-	st := newStyles(p, ui.UseColors)
+	st := newStyles(&ui.theme, ui.UseColors)
 	sp.Style = st.accent
 
 	return &model{
@@ -153,8 +152,13 @@ func newModel(ui *UI) *model {
 		spinner: sp,
 		frames:  frames,
 		st:      st,
-		bar:     newBarRenderer(p, ui.UseColors, ui.noUnicode),
+		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
+		// Anything worth saying about the theme or the config is said here rather
+		// than on stderr, which the alternate screen would wipe before it could be
+		// read.
+		status:        ui.notice(),
+		statusIsError: ui.noticeIsError,
 	}
 }
 
@@ -272,6 +276,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFileLoaded(msg)
 		return m, nil
 
+	case viewSavedMsg:
+		m.applyViewSaved(msg)
+		return m, nil
+
 	case deleteDoneMsg:
 		cmd := m.applyDelete(msg)
 		return m, cmd
@@ -315,8 +323,8 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.handleSortKey(msg.String())
 		return m, nil
 	case m.colPending:
-		m.handleColumnKey(msg.String())
-		return m, nil
+		cmd := m.handleColumnKey(msg.String())
+		return m, cmd
 	}
 
 	switch msg.String() {

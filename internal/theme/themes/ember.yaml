@@ -1,0 +1,24 @@
+# ember — the warm one. The bar burns amber to red, which is the one gradient
+# here where the colour happens to agree with the meaning: a nearly full bar ends
+# up red.
+#
+# That agreement is a coincidence and nothing relies on it. The percentage column
+# still carries the number, exactly as under every other theme, because on a
+# 256-colour terminal this gradient is a solid amber fill and on a dumb terminal
+# it is plain characters.
+
+panel: "#2b1d16"
+text: "#f0d8c4"
+dir: "#fff0e2"
+selected: "#fffaf5"
+# Dark ink: ember's danger and dim are both light enough that the white the
+# cursor row uses would have sat on them at about 3:1.
+ink: "#2b1d16"
+dim: "#a08472"
+accent: "#ff8c42"
+size: "#ffd479"
+danger: "#ff4d4d"
+
+bar-from: "#ffb347"
+bar-to: "#e03a3a"
+bar-track: "#3a251c"

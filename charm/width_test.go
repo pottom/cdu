@@ -75,6 +75,52 @@ func TestRowWidthsUnderTruecolor(t *testing.T) {
 	}
 }
 
+// No line may be wider than the terminal, on any screen, at any size.
+//
+// This is the horizontal twin of TestFrameHeight, and of the same bug: a line
+// that overflows is soft-wrapped by the terminal, which makes the frame taller
+// than it claims and walks it down the screen on every render.
+//
+// It used to fail from width 1 to 15, because each component floors its own
+// columns — the size column at 10, the name at 4 — and the floors add up to more
+// than a narrow terminal has. Every one of them now gives up rather than
+// overflow, in the order the design can most afford: the margin, then the
+// breathing room, then the chrome, then everything but the one thing worth
+// saying. Nobody has a 12-column terminal, but a tmux pane mid-drag is briefly
+// every width there is.
+func TestNoLineIsWiderThanTheTerminal(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+
+	for _, scr := range []screen{screenBrowse, screenScanning, screenConfirm, screenViewer} {
+		for width := 0; width <= 100; width++ {
+			for _, height := range []int{1, 3, 24} {
+				m := benchModel(50)
+				m.width, m.height = width, height
+				m.haveSize = true
+				m.scr = scr
+				m.progress.ItemCount = 5
+				m.progress.CurrentItemName = "/some/deeply/nested/path/being/walked"
+				m.confirm = &confirmState{
+					item: m.rows[0], parent: m.currentDir,
+					act: actionDelete, requireTyping: true,
+				}
+				m.viewer = &viewerState{
+					path:  "/some/very/long/path/to/a/file/that/does/not/fit.txt",
+					lines: []string{"one", "two", "three"},
+				}
+				m.dev = &device.Device{Name: "Macintosh HD", MountPoint: "/", Size: 994 << 30, Free: 210 << 30}
+
+				for i, line := range strings.Split(m.View(), "\n") {
+					if got := lipgloss.Width(line); got > width {
+						t.Errorf("screen %d at %dx%d: line %d is %d columns wide, terminal is %d",
+							scr, width, height, i, got, width)
+					}
+				}
+			}
+		}
+	}
+}
+
 // The frame must be exactly as tall as the terminal at every size, on every
 // screen — including the sizes where the list height is not a whole number of
 // two-line entries. One line too many and the terminal scrolls on every render.

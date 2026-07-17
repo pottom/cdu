@@ -19,6 +19,7 @@ import (
 	"github.com/pottom/cdu/build"
 	"github.com/pottom/cdu/charm"
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/device"
 	gfs "github.com/pottom/cdu/pkg/fs"
@@ -75,6 +76,7 @@ type Flags struct {
 	ShowMTime          bool     `yaml:"show-mtime"`
 	NoColor            bool     `yaml:"no-color"`
 	Mouse              bool     `yaml:"mouse"`
+	Icons              bool     `yaml:"icons"`
 	NonInteractive     bool     `yaml:"non-interactive"`
 	Interactive        bool     `yaml:"interactive"`
 	NoProgress         bool     `yaml:"no-progress"`
@@ -105,6 +107,21 @@ type Flags struct {
 	CollapsePath       bool     `yaml:"collapse-path"`
 	BrowseParentDirs   bool     `yaml:"browse-parent-dirs"`
 	Classic            bool     `yaml:"classic"`
+
+	// Theme colours the Charm interface. The classic interface keeps its own
+	// `style` block above and ignores this one.
+	Theme theme.Config `yaml:"theme"`
+	// ThemeName is --theme. It selects a preset and leaves any token overrides in
+	// Theme alone, so a flag on the command line does not throw away colours the
+	// user pinned by hand in their config.
+	ThemeName string `yaml:"-"`
+	// ConfigNotice is something worth saying about where the config came from —
+	// today, that it came from gdu's path. It reaches the user on the status line,
+	// since the alternate screen would wipe anything printed before it opens.
+	ConfigNotice string `yaml:"-"`
+	// ThemeProblems are theme files in the user's theme directory that could not
+	// be read. They are warnings, not errors: cdu opens regardless, without them.
+	ThemeProblems []string `yaml:"-"`
 }
 
 // ShouldRunInNonInteractiveMode checks if the application should run in non-interactive mode
@@ -441,7 +458,13 @@ func (a *App) createUI() (UI, error) {
 }
 
 func (a *App) getCharmOptions() []charm.Option {
-	opts := []charm.Option{charm.WithDeviceGetter(a.Getter)}
+	opts := []charm.Option{
+		charm.WithDeviceGetter(a.Getter),
+		charm.WithTheme(&a.Flags.Theme, a.Flags.ThemeName),
+		charm.WithNotice(a.Flags.ConfigNotice),
+		charm.WithWarnings(a.Flags.ThemeProblems...),
+		charm.WithConfigSaver(a.saveView),
+	}
 	if a.Flags.NoUnicode {
 		opts = append(opts, charm.UseOldSizeBar())
 	}
@@ -453,6 +476,9 @@ func (a *App) getCharmOptions() []charm.Option {
 	}
 	if a.Flags.Mouse {
 		opts = append(opts, func(ui *charm.UI) { ui.SetMouse() })
+	}
+	if a.Flags.Icons {
+		opts = append(opts, func(ui *charm.UI) { ui.SetIcons() })
 	}
 	if a.Flags.ShowItemCount {
 		opts = append(opts, func(ui *charm.UI) { ui.SetShowItemCount() })

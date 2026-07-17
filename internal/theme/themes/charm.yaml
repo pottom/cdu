@@ -1,0 +1,26 @@
+# charm — the default, and the reference the others are measured against: the
+# mocks in docs/design were drawn in it. Dark aubergine, pink to purple.
+#
+# A token names a role, not a hue. charm's accent happens to be pink; midnight's
+# is cyan.
+#
+# To start your own:
+#   cdu themes dump charm > ~/.config/cdu/themes/mine.yaml
+#   cdu --theme mine
+
+panel: "#241c34" # the cursor row's bed, and the modal's ground
+text: "#cfc6ef" # an ordinary file name, and the modal's body
+dir: "#e9e3ff" # a directory — brighter than a file
+selected: "#ffffff" # the cursor row's name, drawn on `panel`
+ink: "#ffffff" # foreground on a filled chip: the focused and destructive buttons
+dim: "#7d739e" # percentages, key hints, unfocused buttons
+accent: "#ff5fd1" # the cursor marker, the wordmark, the modal border, matched filter runes
+size: "#4ff0c0" # the size column
+danger: "#ff2fb3" # anything destructive
+
+# The usage bar. `bar-from` doubles as the solid fill on a 256-colour terminal,
+# where the gradient is not drawn at all — it bands visibly, which reads as a
+# fault rather than a design.
+bar-from: "#ff5fd1"
+bar-to: "#8b6dff"
+bar-track: "#2a2140" # the unlit part of the bar

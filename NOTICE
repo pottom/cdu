@@ -29,3 +29,15 @@ Third-party components
   github.com/gdamore/tcell         Apache-2.0
 
 Full dependency licenses are listed in the SBOM published with each release.
+
+Bundled data
+------------
+
+cdu's file-type icon table (charm/icons_table.go, used only with --icons) is
+transcribed from exa's src/output/icons.rs (https://github.com/ogham/exa),
+Copyright (c) 2014 Benjamin Sago, distributed under the MIT License. It maps
+filenames and extensions to Nerd Font codepoints. No exa code is included, and
+cdu is not affiliated with or endorsed by exa.
+
+It is taken from exa and not from eza, exa's maintained fork: eza is licensed
+under the EUPL-1.2, which cdu — being MIT — cannot take code or data from.

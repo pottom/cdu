@@ -120,6 +120,14 @@ func (m *model) View() string {
 	if !m.haveSize {
 		return ""
 	}
+	// A terminal of no width has nowhere to put a column, and every component
+	// below has a floor of at least one — they would each draw a single column
+	// into a screen that has none, and the terminal would wrap all of them. Give
+	// back the right number of empty lines instead and let the next resize sort
+	// it out.
+	if m.width < 1 {
+		return padLines("", m.height)
+	}
 
 	switch m.scr {
 	case screenError:
@@ -148,8 +156,14 @@ func (m *model) viewerHeight() int {
 func (m *model) viewViewer() string {
 	v := m.viewer
 
-	header := m.st.accent.Render("▏ ") +
-		m.st.dirName.Render(runewidth.Truncate(v.path, max(m.width-2, 1), "…"))
+	// The marker costs two columns. On a terminal that cannot hold it and a
+	// column of path, the path is the part worth keeping — the marker is chrome.
+	const markerWidth = 2
+	header := m.st.dirName.Render(runewidth.Truncate(v.path, max(m.width, 1), "…"))
+	if m.width > markerWidth {
+		header = m.st.accent.Render("▏ ") +
+			m.st.dirName.Render(runewidth.Truncate(v.path, m.width-markerWidth, "…"))
+	}
 
 	height := m.viewerHeight()
 	end := min(v.offset+height, len(v.lines))
@@ -167,25 +181,51 @@ func (m *model) viewViewer() string {
 	return padLines(header+"\n"+body+"\n"+m.viewViewerFooter(), m.height)
 }
 
+// viewViewerFooter is the pager's key hints, with the scroll position on the
+// right when there is room for it.
+//
+// The hints are measured and cut as plain text and styled afterwards, never the
+// other way round. Truncating the styled string is what this used to do, and it
+// was wrong in a way only a second theme could show: runewidth counts an escape
+// sequence's bytes as visible columns, so the same footer cut to the same width
+// kept a different amount of text under charm than under mono — and under a
+// colour theme, on a narrow terminal, it cut away nearly all of it.
 func (m *model) viewViewerFooter() string {
-	keys := m.st.accent.Render("↑↓") + m.st.dim.Render(" scroll  ") +
-		m.st.accent.Render("q") + m.st.dim.Render(" close")
+	if m.width < 1 {
+		return ""
+	}
+
+	hints := []keyHint{
+		{key: "↑↓", label: "scroll"},
+		{key: "q", label: "close"},
+	}
 
 	right := ""
+	rightStyle := m.st.dim
 	switch {
 	case m.viewer.truncated:
-		right = m.st.danger.Render("first " + m.ui.formatSize(viewerReadCap) + " shown")
+		right, rightStyle = "first "+m.ui.formatSize(viewerReadCap)+" shown", m.st.danger
 	case len(m.viewer.lines) > 0:
 		// The line range, so a long file's scroll position is legible.
 		last := min(m.viewer.offset+m.viewerHeight(), len(m.viewer.lines))
-		right = m.st.dim.Render(fmt.Sprintf("%d–%d of %d", m.viewer.offset+1, last, len(m.viewer.lines)))
+		right = fmt.Sprintf("%d–%d of %d", m.viewer.offset+1, last, len(m.viewer.lines))
 	}
 
-	gap := m.width - lipgloss.Width(keys) - lipgloss.Width(right)
-	if gap < 1 {
-		return runewidth.Truncate(keys, max(m.width, 1), "")
+	// The position is the first thing to go: the keys are what the footer is for.
+	keysWidth := plainKeyWidth(hints)
+	if keysWidth+1+runewidth.StringWidth(right) > m.width {
+		right = ""
 	}
-	return keys + strings.Repeat(" ", gap) + right
+
+	rendered := m.renderKeys(hints)
+	gap := m.width - keysWidth - runewidth.StringWidth(right)
+	if gap < 1 {
+		// Not even the keys fit whole. Cut them as text, then style — every hint
+		// dropped rather than a hint cut in half would leave the footer empty on a
+		// narrow terminal, and an empty footer says nothing at all.
+		return m.st.dim.Render(runewidth.Truncate(plainKeys(hints), m.width, ""))
+	}
+	return rendered + strings.Repeat(" ", gap) + rightStyle.Render(right)
 }
 
 // viewScanning keeps the same chrome the browser has, as the mock does: the
@@ -217,7 +257,17 @@ func (m *model) viewScanBody() string {
 
 	// spinner(1) + gap(1) + status + cursor(1)
 	const chrome = 3
-	status = runewidth.Truncate(status, max(m.width-chrome, 0), "…")
+	if m.width < 1 {
+		return ""
+	}
+	// At or below the chrome's own width there is no room for a word about the
+	// scan, and Truncate would not give one anyway — asked for zero columns it
+	// returns its ellipsis, which is one. The spinner alone still says the only
+	// thing that matters here: the scan is alive.
+	if m.width <= chrome {
+		return m.spinner.View()
+	}
+	status = runewidth.Truncate(status, m.width-chrome, "…")
 
 	cursor := " "
 	if m.blinkOn {
@@ -407,25 +457,7 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 
 	removing := item == m.pending
 
-	icon := ""
-	if m.width >= minWidthForIcon {
-		switch {
-		case removing:
-			// The removal is happening off the render loop and can take seconds. The
-			// row spins so that the wait is visible rather than looking like a key
-			// that never registered.
-			icon = m.tickFrame() + " "
-		case m.ui.noUnicode:
-			icon = "  "
-			if item.IsDir() {
-				icon = "> "
-			}
-		case item.IsDir():
-			icon = "▸ "
-		default:
-			icon = "· "
-		}
-	}
+	icon := m.rowIcon(item)
 
 	sizeText := padLeft(m.ui.formatSize(size), sizeColWidth)
 
@@ -477,6 +509,19 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored)
 	}
 
+	// Floored: the terminal is narrower than the columns' own minimums add up to,
+	// so the row cannot be composed to fit. Clip it whole, exactly as the selected
+	// row already does — otherwise it overflows, the terminal soft-wraps it, and
+	// the frame pushes itself down the screen on every render. That is the
+	// horizontal twin of the bug padLines exists for.
+	//
+	// The per-column colour goes with it, which costs nothing: no colour here
+	// carries meaning the text does not. Clipping happens before styling, never
+	// after — a styled string measured by rune count loses most of its content.
+	if floored {
+		return m.st.fileName.Render(clipTo(" "+plain, m.width))
+	}
+
 	nameStyle := m.st.fileName
 	iconStyle := m.st.dim
 	switch {
@@ -509,7 +554,16 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 // name column has been floored the row no longer adds up to the exact width, so it
 // is clipped whole rather than composed.
 func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored bool) string {
+	if m.width < 1 {
+		return ""
+	}
 	marker := m.st.accent.Render("▌")
+	// One column: the marker alone. It is the whole of what the cursor row has to
+	// say at this size, and it is the cue that survives --no-color anyway — there
+	// is no room for it *and* a column of name.
+	if m.width < 2 {
+		return marker
+	}
 
 	if m.filter != "" && !floored {
 		return marker +
@@ -596,6 +650,9 @@ var (
 		{key: "B", label: "relative"},
 		{key: "c", label: "count"},
 		{key: "m", label: "mtime"},
+		// A key nobody can see is a key nobody has, and this is the only place the
+		// save is advertised — so it sheds last, before only `cancel`.
+		{key: "s", label: "save view", drop: 5},
 		{key: "esc", label: "cancel"},
 	}
 	scanKeys = []keyHint{
@@ -676,20 +733,7 @@ func (m *model) viewFooter() string {
 	// worth less than knowing which keys exist — so the hints get the room first.
 	keys = fitKeys(keys, max(m.width-minRightWidth, 0))
 
-	var plain, styled strings.Builder
-	for i, k := range keys {
-		if i > 0 {
-			plain.WriteString("  ")
-			styled.WriteString("  ")
-		}
-		plain.WriteString(k.key)
-		plain.WriteByte(' ')
-		plain.WriteString(k.label)
-
-		styled.WriteString(m.st.accent.Render(k.key))
-		styled.WriteByte(' ')
-		styled.WriteString(m.st.dim.Render(k.label))
-	}
+	plain, styled := plainKeys(keys), m.renderKeys(keys)
 
 	// The right-hand side is whichever matters more right now: the mode you are in,
 	// then what just happened, then — when neither — how the list is sorted. A
@@ -714,17 +758,55 @@ func (m *model) viewFooter() string {
 		right = m.sortLabel()
 	}
 
-	gap := m.width - runewidth.StringWidth(plain.String()) - runewidth.StringWidth(right)
+	if m.width < 1 {
+		return ""
+	}
+	gap := m.width - runewidth.StringWidth(plain) - runewidth.StringWidth(right)
 	if gap < 1 {
 		// Too narrow for both. The keys are the only way out of the screen, so they
 		// are what survives — except when something just happened, which is the one
 		// thing the user needs to read.
 		if m.status != "" {
-			return rightStyle.Render(runewidth.Truncate(right, max(m.width, 1), "…"))
+			return rightStyle.Render(runewidth.Truncate(right, m.width, "…"))
 		}
-		return m.st.dim.Render(runewidth.Truncate(plain.String(), max(m.width, 1), ""))
+		return m.st.dim.Render(runewidth.Truncate(plain, m.width, ""))
 	}
-	return styled.String() + strings.Repeat(" ", gap) + rightStyle.Render(right)
+	return styled + strings.Repeat(" ", gap) + rightStyle.Render(right)
+}
+
+// plainKeys is the hints as bare text. It is the version that gets measured and
+// cut: its width is what it looks like, which is not true of the styled one.
+func plainKeys(keys []keyHint) string {
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString("  ")
+		}
+		b.WriteString(k.key)
+		b.WriteByte(' ')
+		b.WriteString(k.label)
+	}
+	return b.String()
+}
+
+func plainKeyWidth(keys []keyHint) int {
+	return runewidth.StringWidth(plainKeys(keys))
+}
+
+// renderKeys is the same hints, styled. It is built rune-for-rune alongside
+// plainKeys rather than by styling it afterwards, so the two cannot drift and
+// neither ever has to be measured through its escapes.
+func (m *model) renderKeys(keys []keyHint) string {
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString("  ")
+		}
+		b.WriteString(m.st.accent.Render(k.key))
+		b.WriteByte(' ')
+		b.WriteString(m.st.dim.Render(k.label))
+	}
+	return b.String()
 }
 
 // viewFilterFooter is the / input line: the query being typed on the left, and

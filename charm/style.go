@@ -7,43 +7,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/internal/theme"
 )
 
-// palette holds every colour the renderer is allowed to use. It exists as a
-// struct rather than a set of constants so the theme system can replace it
-// wholesale later — nothing below reaches for a colour literal directly.
-//
-// These are the `charm` theme's tokens from the design spec.
-type palette struct {
-	panel  lipgloss.Color
-	pink   lipgloss.Color
-	purple lipgloss.Color
-	text   lipgloss.Color
-	dim    lipgloss.Color
-	mint   lipgloss.Color
-	danger lipgloss.Color
+// lg turns a theme token into a Lipgloss colour. Every colour in the render path
+// comes through here from the active theme — no style below holds a literal, so
+// a theme can replace all of them.
+func lg(c theme.Color) lipgloss.Color { return lipgloss.Color(string(c)) }
 
-	// The usage bar: the gradient runs pink → purple across the filled part,
-	// over an unlit track.
-	barTrack lipgloss.Color
-}
-
-func charmPalette() *palette {
-	return &palette{
-		panel:    lipgloss.Color("#241c34"),
-		pink:     lipgloss.Color("#ff5fd1"),
-		purple:   lipgloss.Color("#8b6dff"),
-		text:     lipgloss.Color("#cfc6ef"),
-		dim:      lipgloss.Color("#7d739e"),
-		mint:     lipgloss.Color("#4ff0c0"),
-		danger:   lipgloss.Color("#ff2fb3"),
-		barTrack: lipgloss.Color("#2a2140"),
-	}
-}
-
-// styles are the resolved Lipgloss styles for one palette. When colour is off
-// (--no-color, NO_COLOR, or a dumb terminal) every style degrades to plain text,
-// which is why state is never conveyed by colour alone.
+// styles are the resolved Lipgloss styles for one theme. When colour is off
+// (--no-color, NO_COLOR, a dumb terminal, or the mono theme) every style
+// degrades to plain text, which is why state is never conveyed by colour alone.
 type styles struct {
 	dirName  lipgloss.Style
 	fileName lipgloss.Style
@@ -65,8 +39,8 @@ type styles struct {
 	buttonDanger lipgloss.Style
 }
 
-func newStyles(p *palette, useColors bool) styles {
-	if !useColors {
+func newStyles(t *theme.Theme, useColors bool) styles {
+	if !useColors || t.Plain {
 		plain := lipgloss.NewStyle()
 		return styles{
 			dirName:       plain.Bold(true),
@@ -88,38 +62,38 @@ func newStyles(p *palette, useColors bool) styles {
 		}
 	}
 	return styles{
-		dirName:  lipgloss.NewStyle().Foreground(lipgloss.Color("#e9e3ff")),
-		fileName: lipgloss.NewStyle().Foreground(p.text),
+		dirName:  lipgloss.NewStyle().Foreground(lg(t.Dir)),
+		fileName: lipgloss.NewStyle().Foreground(lg(t.Text)),
 		selected: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(p.panel).
+			Foreground(lg(t.Selected)).
+			Background(lg(t.Panel)).
 			Bold(true),
 		selectedMatch: lipgloss.NewStyle().
-			Foreground(p.pink).
-			Background(p.panel).
+			Foreground(lg(t.Accent)).
+			Background(lg(t.Panel)).
 			Bold(true),
-		size:   lipgloss.NewStyle().Foreground(p.mint),
-		pct:    lipgloss.NewStyle().Foreground(p.dim),
-		dim:    lipgloss.NewStyle().Foreground(p.dim),
-		accent: lipgloss.NewStyle().Foreground(p.pink).Bold(true),
-		danger: lipgloss.NewStyle().Foreground(p.danger).Bold(true),
+		size:   lipgloss.NewStyle().Foreground(lg(t.Size)),
+		pct:    lipgloss.NewStyle().Foreground(lg(t.Dim)),
+		dim:    lipgloss.NewStyle().Foreground(lg(t.Dim)),
+		accent: lipgloss.NewStyle().Foreground(lg(t.Accent)).Bold(true),
+		danger: lipgloss.NewStyle().Foreground(lg(t.Danger)).Bold(true),
 
 		modal: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(p.pink).
-			Background(p.panel).
-			Foreground(p.text).
+			BorderForeground(lg(t.Accent)).
+			Background(lg(t.Panel)).
+			Foreground(lg(t.Text)).
 			Padding(0, modalPadding),
 		button: lipgloss.NewStyle().
-			Foreground(p.dim).
-			Background(p.panel),
+			Foreground(lg(t.Dim)).
+			Background(lg(t.Panel)),
 		buttonFocus: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(p.dim).
+			Foreground(lg(t.Ink)).
+			Background(lg(t.Dim)).
 			Bold(true),
 		buttonDanger: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(p.danger).
+			Foreground(lg(t.Ink)).
+			Background(lg(t.Danger)).
 			Bold(true),
 	}
 }

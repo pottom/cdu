@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/device"
 	"github.com/pottom/cdu/pkg/fs"
@@ -42,6 +44,10 @@ type UI struct {
 	noDelete   bool
 	noViewFile bool
 	mouse      bool
+	// icons draws Nerd Font glyphs in the icon cell instead of the plain markers.
+	// Off unless asked for: the glyphs need a patched font, and cdu cannot tell
+	// whether one is loaded.
+	icons bool
 
 	// Optional columns, off by default and toggled with c and m.
 	showItemCount bool
@@ -49,6 +55,37 @@ type UI struct {
 
 	sortBy    fs.SortBy
 	sortOrder fs.SortOrder
+
+	// save persists the view (t then s). It is a callback because charm cannot see
+	// the config struct — cmd/cdu/app imports charm, not the reverse — and a writer
+	// that only knew the fields here would drop the rest of the file. Nil means
+	// saving is unavailable, and the key says so.
+	save func(ViewSettings) (string, error)
+
+	// theme supplies every colour the renderer uses. The constructor plants the
+	// default, so no render path has to ask whether a theme was configured.
+	theme theme.Theme
+
+	// notices are things to tell the user once the interface is up: a theme that
+	// could not be honoured, a config being read from gdu's path. They land on the
+	// status line rather than stderr because cdu opens the alternate screen
+	// immediately, and anything printed before that is wiped before it can be read.
+	notices []string
+	// noticeIsError is true when any notice is a complaint rather than a remark.
+	noticeIsError bool
+}
+
+func (ui *UI) addNotice(s string, isError bool) {
+	if s == "" {
+		return
+	}
+	ui.notices = append(ui.notices, s)
+	ui.noticeIsError = ui.noticeIsError || isError
+}
+
+// notice is every notice as one status line.
+func (ui *UI) notice() string {
+	return strings.Join(ui.notices, "; ")
 }
 
 // Option customises the UI.
@@ -75,9 +112,19 @@ func CreateUI(
 		linkedItems: make(fs.HardLinkedItems, 10),
 		sortBy:      fs.SortBySize,
 		sortOrder:   fs.SortDesc,
+		theme:       theme.Charm(),
 	}
 	for _, o := range opts {
 		o(ui)
+	}
+
+	// Sorting by size has to mean the size on screen, exactly as toggling the
+	// column at runtime makes sure of. Without this, a config carrying both
+	// show-apparent-size and sorting.by: size would open ordered by disk usage
+	// while showing apparent size — the very inconsistency handleToggle guards
+	// against, arriving through the front door instead.
+	if ui.sortBy == fs.SortBySize && ui.ShowApparentSize {
+		ui.sortBy = fs.SortByApparentSize
 	}
 	return ui
 }
@@ -90,6 +137,39 @@ func UseOldSizeBar() Option {
 // WithDeviceGetter supplies the mount table the header's disk line is drawn from.
 func WithDeviceGetter(getter device.DevicesInfoGetter) Option {
 	return func(ui *UI) { ui.getter = getter }
+}
+
+// WithTheme resolves the config's theme block against --theme and installs the
+// result.
+//
+// A problem in either is carried into the interface as a status line rather than
+// printed and lost: cdu opens the alternate screen immediately, which would wipe
+// anything written to stderr before a user could read it.
+func WithTheme(cfg *theme.Config, name string) Option {
+	return func(ui *UI) {
+		th, err := theme.Resolve(cfg, name)
+		ui.theme = th
+		if err != nil {
+			// errors.Join separates with newlines, and the status line is one line.
+			ui.addNotice(strings.ReplaceAll(err.Error(), "\n", "; "), true)
+		}
+	}
+}
+
+// WithNotice adds a remark to show on the status line once the interface is up.
+func WithNotice(s string) Option {
+	return func(ui *UI) { ui.addNotice(s, false) }
+}
+
+// WithWarnings adds complaints to show on the status line. Unlike a notice these
+// are things the user asked for and did not get — a theme file of theirs that
+// would not load — so they are coloured as errors.
+func WithWarnings(warnings ...string) Option {
+	return func(ui *UI) {
+		for _, w := range warnings {
+			ui.addNotice(w, true)
+		}
+	}
 }
 
 // SetNoDelete disables every destructive key. The keys stay bound and say they
@@ -108,6 +188,13 @@ func (ui *UI) SetNoViewFile() {
 // terminal text selection keeps working for anyone who does not ask for it.
 func (ui *UI) SetMouse() {
 	ui.mouse = true
+}
+
+// SetIcons draws Nerd Font glyphs in the icon cell (--icons). Off by default:
+// without a patched font every row would start with a box, and cdu has no way to
+// ask the terminal what font it has.
+func (ui *UI) SetIcons() {
+	ui.icons = true
 }
 
 // SetShowItemCount starts with the item-count column on (-C).

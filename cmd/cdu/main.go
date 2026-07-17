@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -16,6 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/pottom/cdu/cmd/cdu/app"
+	"github.com/pottom/cdu/internal/config"
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/device"
 )
 
@@ -25,11 +26,18 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "gdu [directory_to_scan]",
-	Short: "Pretty fast disk usage analyzer written in Go",
+	Use:   "cdu [directory_to_scan]",
+	Short: "Pretty fast disk usage analyzer with a Charm interface",
 	Long: `Pretty fast disk usage analyzer written in Go.
 
-Gdu is intended primarily for SSD disks where it can fully utilize parallel processing.
+cdu is a fork of gdu (https://github.com/dundee/gdu) by Daniel Milde. The disk
+analysis engine is gdu's, unchanged; what cdu adds is a new interactive interface
+built on the Charm stack, themes, and recoverable deletes. The non-interactive and
+JSON export modes are byte-for-byte identical to gdu's, and --classic gives you
+gdu's original interface. This is not the official gdu — report cdu's own bugs at
+https://github.com/pottom/cdu/issues.
+
+Intended primarily for SSD disks where it can fully utilize parallel processing.
 However HDDs work as well, but the performance gain is not so huge.
 `,
 	Args:         cobra.MaximumNArgs(1),
@@ -37,15 +45,77 @@ However HDDs work as well, but the performance gain is not so huge.
 	RunE:         runE,
 }
 
+// themesCmd lists the bundled color themes.
+//
+// Root takes a directory as its argument, so `cdu themes` is ambiguous with a
+// directory actually called `themes` — a Hugo site has one, and cobra resolves
+// the subcommand first. Rather than leave that as a trap, the listing notices
+// and says how to scan it instead.
+var themesCmd = &cobra.Command{
+	Use:          "themes",
+	Short:        "List the bundled color themes",
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		// This is the one command where a broken theme is the whole subject, and
+		// there is no alternate screen here to swallow the warning.
+		for _, problem := range af.ThemeProblems {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", problem)
+		}
+		resolved, err := theme.Resolve(&af.Theme, af.ThemeName)
+		if err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", err)
+		}
+		// With no home directory there is nowhere to point someone at, so the
+		// listing simply does not offer. It is not worth an error: the themes above
+		// it are the answer they came for.
+		dir, dirErr := config.ThemeDir()
+		if dirErr != nil {
+			dir = ""
+		}
+		if err := theme.List(cmd.OutOrStdout(), resolved.Name, dir); err != nil {
+			return err
+		}
+		if info, err := os.Stat("themes"); err == nil && info.IsDir() {
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"\nNote: ./themes is a directory. To scan it rather than list themes, run `cdu ./themes`.")
+		}
+		return nil
+	},
+}
+
+// themesDumpCmd prints a theme's file.
+//
+// It is what makes the bundled themes being files mean anything to someone
+// holding only the binary: they are embedded, so "copy one and edit it" would
+// otherwise mean a trip to GitHub.
+var themesDumpCmd = &cobra.Command{
+	Use:   "dump NAME",
+	Short: "Print a theme's YAML, to save as the start of your own",
+	Example: "  cdu themes dump charm > ~/.config/cdu/themes/mine.yaml\n" +
+		"  cdu --theme mine",
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		data, err := theme.Dump(args[0])
+		if err != nil {
+			return err
+		}
+		_, err = cmd.OutOrStdout().Write(data)
+		return err
+	},
+}
+
 // nolint:funlen // a lot of flags to initialize
 func init() {
 	af = &app.Flags{Style: app.Style{ProgressModal: app.ProgressModalOpts{ShowDiskProgressBar: true}}}
 	flags := rootCmd.Flags()
-	flags.StringVar(&af.CfgFile, "config-file", "", "Read config from file (default is $HOME/.gdu.yaml)")
+	flags.StringVar(&af.CfgFile, "config-file", "",
+		"Read config from file (default is $XDG_CONFIG_HOME/cdu/cdu.yaml, else ~/.config/cdu/cdu.yaml; falls back to a gdu config if there is one)")
 	flags.StringVarP(&af.LogFile, "log-file", "l", "/dev/null", "Path to a logfile")
 	flags.StringVarP(&af.OutputFile, "output-file", "o", "", "Export all info into file as JSON")
 	flags.StringVarP(&af.InputFile, "input-file", "f", "", "Import analysis from JSON file")
-	flags.IntVarP(&af.MaxCores, "max-cores", "m", runtime.NumCPU(), fmt.Sprintf("Set max cores that Gdu will use. %d cores available", runtime.NumCPU()))
+	flags.IntVarP(&af.MaxCores, "max-cores", "m", runtime.NumCPU(), fmt.Sprintf("Set max cores that cdu will use. %d cores available", runtime.NumCPU()))
 	flags.BoolVar(&af.SequentialScanning, "sequential", false, "Use sequential scanning (intended for rotating HDDs)")
 	flags.BoolVarP(&af.ShowVersion, "version", "v", false, "Print version")
 
@@ -80,6 +150,13 @@ func init() {
 	flags.BoolVarP(&af.NoColor, "no-color", "c", false, "Do not use colorized output")
 	flags.BoolVarP(&af.ShowItemCount, "show-item-count", "C", false, "Show number of items in directory")
 	flags.BoolVarP(&af.ShowMTime, "show-mtime", "M", false, "Show latest mtime of items in directory")
+	// Persistent, not local: `cdu themes --theme ember` has to reach the listing
+	// so it can mark which theme is in use, and a subcommand does not inherit
+	// root's local flags. No backticks in the usage string — cobra reads those as
+	// the flag's argument placeholder, and "see `cdu themes`" rendered the flag as
+	// `--theme cdu themes`.
+	rootCmd.PersistentFlags().StringVar(&af.ThemeName, "theme", "",
+		"Color theme for the interactive interface (run 'cdu themes' to see them)")
 	flags.BoolVar(&af.Classic, "classic", false, "Use gdu's original interface instead of the Charm one")
 	flags.BoolVarP(&af.NonInteractive, "non-interactive", "n", false, "Do not run in interactive mode")
 	flags.BoolVar(&af.Interactive, "interactive", false, "Force interactive mode even when output is not a TTY")
@@ -93,10 +170,13 @@ func init() {
 	flags.BoolVarP(&af.ShowInKiB, "show-in-kib", "k", false, "Show sizes in KiB (or kB with --si) in non-interactive mode")
 	flags.BoolVar(&af.ReverseSort, "reverse-sort", false, "Reverse sorting order (smallest to largest) in non-interactive mode")
 	flags.BoolVar(&af.Mouse, "mouse", false, "Use mouse")
+	flags.BoolVar(&af.Icons, "icons", false,
+		"Draw Nerd Font icons by file type. Needs a patched font, so it is off by default")
 	flags.BoolVar(&af.NoDelete, "no-delete", false, "Do not allow deletions")
 	flags.BoolVar(&af.NoViewFile, "no-view-file", false, "Do not allow viewing file contents")
 	flags.BoolVar(&af.NoSpawnShell, "no-spawn-shell", false, "Do not allow spawning shell")
-	flags.BoolVar(&af.WriteConfig, "write-config", false, "Write current configuration to file (default is $HOME/.gdu.yaml)")
+	flags.BoolVar(&af.WriteConfig, "write-config", false,
+		"Write current configuration to ~/.config/cdu/cdu.yaml (or --config-file). This is also how you take over a gdu config")
 	flags.StringVar(
 		&af.Since, "since", "",
 		"Include files with mtime >= WHEN. WHEN accepts RFC3339 timestamp (e.g., 2025-08-11T01:00:00-07:00) "+
@@ -106,8 +186,29 @@ func init() {
 	flags.StringVar(&af.MaxAge, "max-age", "", "Include files with mtime no older than DURATION (e.g., 7d, 2h30m, 1y2mo)")
 	flags.StringVar(&af.MinAge, "min-age", "", "Include files with mtime at least DURATION old (e.g., 30d, 1w)")
 
+	themesCmd.AddCommand(themesDumpCmd)
+	rootCmd.AddCommand(themesCmd)
+
 	initConfig()
+	initUserThemes()
 	setDefaults()
+}
+
+// initUserThemes adds the themes in ~/.config/cdu/themes.
+//
+// A broken one is reported and skipped, never fatal: it is somebody's
+// half-finished theme, not a reason to refuse to show them their disk. The
+// report reaches the interactive interface on its status line, and `cdu themes`
+// prints it to stderr — which is where you look when the theme you just wrote
+// did not appear.
+func initUserThemes() {
+	dir, err := config.ThemeDir()
+	if err != nil {
+		return
+	}
+	for _, problem := range theme.LoadUserThemes(dir) {
+		af.ThemeProblems = append(af.ThemeProblems, problem.Error())
+	}
 }
 
 func initConfig() {
@@ -160,19 +261,27 @@ func setConfigFilePath() {
 }
 
 func setDefaultConfigFilePath() {
-	home, err := os.UserHomeDir()
+	path, notice, err := config.Resolve()
 	if err != nil {
 		configErr = err
 		return
 	}
+	af.CfgFile = path
+	af.ConfigNotice = notice
+}
 
-	path := filepath.Join(home, ".config", "gdu", "gdu.yaml")
-	if _, err := os.Stat(path); err == nil {
-		af.CfgFile = path
-		return
+// writeConfigPath is where --write-config writes, which is not necessarily where
+// the config was read from.
+//
+// When cdu falls back to a gdu config, reading it is the point and overwriting
+// it is not: --write-config is how you take your own copy, which is exactly what
+// the fallback notice promises. An explicit --config-file still wins, because
+// then the user named the file themselves.
+func writeConfigPath(command *cobra.Command) (string, error) {
+	if command.Flags().Changed("config-file") && af.CfgFile != "" {
+		return af.CfgFile, nil
 	}
-
-	af.CfgFile = filepath.Join(home, ".gdu.yaml")
+	return config.Path()
 }
 
 func runE(command *cobra.Command, args []string) error {
@@ -183,16 +292,24 @@ func runE(command *cobra.Command, args []string) error {
 	)
 
 	if af.WriteConfig {
+		// --write-config dumps the config actually in effect, so the theme block
+		// names the theme in use rather than being an empty map. Only the preset
+		// name: writing the twelve resolved tokens would pin today's palette into
+		// every config ever written, and a later cdu could never improve one.
+		if resolved, terr := theme.Resolve(&af.Theme, af.ThemeName); terr == nil {
+			af.Theme.Preset = resolved.Name
+		}
+
 		data, err := yaml.Marshal(af)
 		if err != nil {
 			return fmt.Errorf("error marshaling config file: %w", err)
 		}
-		if af.CfgFile == "" {
-			setDefaultConfigFilePath()
-		}
-		err = os.WriteFile(af.CfgFile, data, 0o600)
+		path, err := writeConfigPath(command)
 		if err != nil {
-			return fmt.Errorf("error writing config file %s: %w", af.CfgFile, err)
+			return err
+		}
+		if err := config.WriteFile(path, data); err != nil {
+			return fmt.Errorf("error writing config file %s: %w", path, err)
 		}
 	}
 

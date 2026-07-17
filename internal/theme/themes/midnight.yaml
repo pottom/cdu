@@ -1,0 +1,25 @@
+# midnight — cool dark: deep blue and cyan, calmer than charm. charm walks from
+# pink to purple, ember from amber to red, phosphor stays green; this is the
+# cold end of the set.
+#
+# The size column is aqua rather than another blue on purpose. A cool palette
+# cannot hold the accent and the size column apart by hue the way charm's pink
+# and mint do — there is only so much room between azure and cyan — so the two
+# are separated by temperature and by where they sit instead.
+#
+# Danger stays a red, cooled to rose. Red is the one role where convention
+# outranks the palette: nobody reads a blue "delete" as dangerous.
+
+panel: "#14263a"
+text: "#b8cfe3"
+dir: "#e3f2ff"
+selected: "#ffffff"
+ink: "#04121e" # dark: it lands on cyan and rose, which are light
+dim: "#64809a"
+accent: "#38bdf8"
+size: "#5eead4"
+danger: "#fb7185"
+
+bar-from: "#67e8f9" # ice
+bar-to: "#2563eb" # deep water
+bar-track: "#1e3a52"

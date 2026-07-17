@@ -33,6 +33,23 @@ func padLines(s string, n int) string {
 	return s + strings.Repeat("\n", n-len(lines))
 }
 
+// clipTo fits a plain string to exactly width columns: truncating a long one and
+// padding a short one.
+//
+// "Exactly" is the point. Truncate alone can come back a column short, because it
+// will not cut a wide rune in half, and a row one column short is as wrong as one
+// column long once something is drawn to its right.
+//
+// Plain text only. runewidth counts an escape sequence's bytes as visible
+// columns, so clipping a styled string throws away most of its content and can
+// leave a background escape unterminated. Clip first, style after.
+func clipTo(s string, width int) string {
+	if width < 1 {
+		return ""
+	}
+	return runewidth.FillRight(runewidth.Truncate(s, width, ""), width)
+}
+
 // middleTruncate keeps both ends of a path readable, which matters more than
 // the middle when you are looking at a breadcrumb.
 func middleTruncate(s string, width int) string {

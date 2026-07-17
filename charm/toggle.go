@@ -1,6 +1,8 @@
 package charm
 
 import (
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/pottom/cdu/pkg/fs"
 )
 
@@ -11,16 +13,23 @@ var toggleKeys = map[string]bool{"a": true, "B": true, "c": true, "m": true}
 
 // handleColumnKey is the second half of the t menu. As with sorting, an unknown
 // key leaves the mode and says so rather than being swallowed.
-func (m *model) handleColumnKey(key string) {
+func (m *model) handleColumnKey(key string) tea.Cmd {
 	m.colPending = false
+
+	// s saves the view. It lives in this menu because these are the settings it
+	// writes; at the top level s is already sort, and the two would collide.
+	if key == "s" {
+		return m.saveView()
+	}
 
 	if !toggleKeys[key] {
 		if key != keyEscape {
 			m.status, m.statusIsError = "no such column: "+key, true
 		}
-		return
+		return nil
 	}
 	m.handleToggle(key)
+	return nil
 }
 
 func (m *model) handleToggle(key string) {

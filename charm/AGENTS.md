@@ -22,6 +22,8 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `filter.go`, `fuzzy.go` — the `/` fuzzy filter and its match highlighting.
 - `viewer.go` — the `v` file pager, with the binary sniff and the read cap.
 - `mouse.go` — wheel-scroll and click-to-select, behind `--mouse`.
+- `icons.go` — the icon cell: markers by default, Nerd Font glyphs behind `--icons`.
+- `icons_table.go` — **generated** from exa's `icons.rs`; do not hand-edit.
 - `style.go` — the palette and the resolved Lipgloss styles.
 - `util.go` — truncation, padding, formatting.
 
@@ -44,8 +46,17 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - **No colour-only meaning.** Selection also carries a `▌` marker; read errors and
   hard links carry glyphs. State must survive `--no-color`, `NO_COLOR` and the
   `mono` theme.
-- **Colours come from the palette struct**, never from a literal in the render
-  path. `style.go` is the seed of the theme system.
+- **Colours come from the active `theme.Theme`**, never from a literal in the
+  render path — `lg()` in `style.go` is the only door they come through. Tokens
+  name a role, not a hue: `Accent`, not `pink`. charm's accent happens to be
+  pink, midnight's is cyan and phosphor's is green — a renderer reaching for
+  `pink` would be telling the truth in exactly one theme.
+- **`Selected` and `Ink` look alike and are not.** `Selected` sits on `Panel`, a
+  surface; `Ink` sits on `Danger`/`Dim`, which are colours and can be light even
+  in a dark theme. They are the same white in charm, which is why fusing them
+  went unnoticed until a theme with a light danger colour made the delete button
+  unreadable. `internal/theme/contrast_test.go` checks every pairing that
+  `newStyles` actually composes — add to it when you compose a new one.
 - **The Charm UI owns the terminal exclusively.** Nothing else may attach a reader
   to it. `cmd/cdu/main.go` creates the tcell screen and tview application *only*
   for `--classic`; when both existed at once they raced Bubble Tea for stdin and
@@ -57,7 +68,21 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   background escape unterminated. Compose rows as plain text at an exact width,
   then style. `lipgloss.Width` is escape-aware; `runewidth.StringWidth` is not.
   `width_test.go` guards this under a forced truecolor profile — without forcing
-  it, Lipgloss falls back to plain ASCII in tests and the bug hides.
+  it, Lipgloss falls back to plain ASCII in tests and the bug hides. `plainKeys`
+  and `renderKeys` are the pattern: build both versions rune-for-rune, measure
+  the plain one, print the styled one. The viewer's footer broke this rule for
+  three slices and only a *second theme* exposed it — mono emits fewer escapes,
+  so the same cut kept a different amount of text.
+- **No line may be wider than the terminal**, on any screen, at any size:
+  `TestNoLineIsWiderThanTheTerminal` checks every width from 0 to 100. An
+  overflowing line is soft-wrapped by the terminal, which makes the frame taller
+  than it claims and walks it down the screen — the horizontal twin of the bug
+  `padLines` exists for. Every component floors its own columns (size at 10, name
+  at 4), and those floors add up to more than a narrow terminal has, so each one
+  gives up in turn: the margin, then the padding, then the chrome, then all but
+  the one thing worth saying. Below one column `View` draws nothing at all.
+  `clipTo` is the tool: it fits plain text to *exactly* a width, because
+  truncation alone can come back a column short rather than split a wide rune.
 - **The analyzer cannot be cancelled** — it has no context and no `Stop()`.
   Quitting mid-scan ends the program and lets the walk die with the process. Do
   not add cancellation by editing `pkg/analyze`; that file is upstream-owned.
@@ -128,6 +153,21 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - **A column with no room says so.** On a narrow terminal `c`/`m` still flip, but
   `toggleLabel` reports that there is no width to draw them, rather than looking
   broken.
+- **The view is saved explicitly (`t` then `s`), never on exit.** Someone who
+  turns the mtime column on to answer one question would otherwise find it on
+  forever with no idea what did it. A view is a thing you try; a config is a thing
+  you decide. `s` lives inside the `t` menu because that is where the settings it
+  writes are — top-level `s` is already sort.
+- **charm cannot write the config itself.** It cannot see `Flags` (`cmd/cdu/app`
+  imports charm, not the reverse), and a writer that knew only the six fields it
+  owns would silently drop the rest of the file. `WithConfigSaver` takes a
+  callback; `app.saveView` folds the view into the whole struct and writes that.
+  It writes cdu's own path even when a gdu config was read — the same split
+  `--write-config` makes.
+- **`CreateUI` reconciles a size sort with the apparent-size column** after the
+  options are applied. `handleToggle` does this at runtime; without the same at
+  startup, a config carrying both `show-apparent-size` and `sorting.by: size`
+  opens ordered by a number the list is not showing.
 
 ### Filter, viewer, mouse
 
@@ -155,7 +195,34 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   colour escapes; under the Ascii profile it forbids every escape.
 - **`--no-unicode` is scoped to the size bar, as in gdu** (its help says "for size
   bar"). The bar becomes `#`/`-`; the marker, the rule and the wordmark stay
-  unicode, matching gdu rather than trying to be a full ASCII mode.
+  unicode, matching gdu rather than trying to be a full ASCII mode. The icon cell
+  is the exception, because `--no-unicode` and `--icons` are a contradiction and
+  the flag that says "you cannot" wins.
+
+### Icons
+
+- **`--icons` is opt-in and stays that way.** The glyphs are Nerd Font private-use
+  codepoints; a terminal without a patched font draws a row of boxes, and cdu
+  cannot ask what font is loaded. On by default would break the majority to please
+  the minority.
+- **The icon cell is glyph *plus a space*, always exactly `iconWidth`.** This is
+  what makes the feature safe: `runewidth` measures a PUA codepoint as one cell,
+  but a Nerd Font's *non-Mono* variants draw it across two, and cdu has no way to
+  know which is installed. The trailing space is the room the wide draw spills
+  into, so the size column stays put either way. exa does the same. Never put
+  content immediately after the glyph, and never make the cell one column.
+- **`icons_table.go` is generated, not written.** It comes from exa's
+  `src/output/icons.rs` (MIT — see NOTICE), *not* from eza's: eza is EUPL-1.2, a
+  copyleft licence cdu cannot take data from. A wrong codepoint is invisible — it
+  renders as some other plausible icon — so it is transcribed mechanically.
+- **Go's `\u` takes exactly four hex digits.** Nine of the glyphs are plane-15
+  Material Design codepoints and need `\U` with eight; the generator got this
+  wrong once and produced a four-digit icon followed by a literal digit.
+  `TestEveryGlyphIsOneCellAndInThePrivateUseArea` catches it.
+- **Lookup order is name, then directory, then extension.** A name beats an
+  extension because `Dockerfile` and `.gitignore` have none worth reading; a
+  directory beats an extension because `node_modules.bak` is a directory, not a
+  backup file.
 
 ## Work Guidance
 
@@ -166,8 +233,13 @@ footer advertises only bindings that exist — do not list a key before it works
 `u` appears only when there is something to undo.
 
 Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
-menu, `t` column menu (or direct `a`/`B`/`c`/`m`), `v` view file, `d` trash,
-`D` delete permanently, `e` empty a file, `u` undo the last trash, `r` rescan.
+menu, `t` column menu (or direct `a`/`B`/`c`/`m`; `t` then `s` saves the view),
+`v` view file, `d` trash, `D` delete permanently, `e` empty a file, `u` undo the
+last trash, `r` rescan.
+
+Flags this package reads: `--no-delete`, `--no-view-file`, `--mouse`, `--icons`,
+`--no-unicode`, `--no-color`, `--theme`, and the `theme:`/`sorting:` config
+blocks.
 
 ## Verification
 

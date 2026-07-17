@@ -1,0 +1,20 @@
+# phosphor — a CRT terminal: vivid green on black. The oldest look there is for
+# a tool like this, and the one hue nothing else here uses.
+#
+# The size column is lime rather than another green: accent and size have to be
+# told apart, and in a single-hue theme the only room left is lightness and the
+# walk toward yellow.
+
+panel: "#0e2417"
+text: "#5ee68c"
+dir: "#c9ffd9"
+selected: "#eaffef"
+ink: "#04120a"
+dim: "#4c9b6a"
+accent: "#00ff7f"
+size: "#b8ff5c"
+danger: "#ff5555" # red: convention outranks the palette on this one role
+
+bar-from: "#00ff9c" # fresh phosphor
+bar-to: "#0b7a49" # burnt in
+bar-track: "#12301f"
