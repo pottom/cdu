@@ -158,14 +158,15 @@ func TestMonoThemeIsColourlessOnACapableTerminal(t *testing.T) {
 // entirely and so is the one most able to drift.
 //
 // Comparing against charm rather than against the terminal width is deliberate:
-// it asks the question this test is for, and does not quietly re-litigate what
-// the layout should do in a terminal too narrow to hold its own floors.
+// it asks the question this test is for. TestNoLineIsWiderThanTheTerminal is
+// what holds the widths themselves, at every size including the ones where the
+// layout has to start giving things up.
 func TestEveryPresetLaysOutIdenticallyToTheDefault(t *testing.T) {
 	original := lipgloss.ColorProfile()
 	defer lipgloss.SetColorProfile(original)
 	lipgloss.SetColorProfile(termenv.TrueColor)
 
-	sizes := []struct{ w, h int }{{40, 3}, {40, 24}, {90, 24}, {200, 24}}
+	sizes := []struct{ w, h int }{{1, 3}, {8, 3}, {16, 24}, {40, 3}, {40, 24}, {90, 24}, {200, 24}}
 
 	for _, name := range theme.Names() {
 		th, ok := theme.Preset(name)

@@ -68,7 +68,21 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   background escape unterminated. Compose rows as plain text at an exact width,
   then style. `lipgloss.Width` is escape-aware; `runewidth.StringWidth` is not.
   `width_test.go` guards this under a forced truecolor profile — without forcing
-  it, Lipgloss falls back to plain ASCII in tests and the bug hides.
+  it, Lipgloss falls back to plain ASCII in tests and the bug hides. `plainKeys`
+  and `renderKeys` are the pattern: build both versions rune-for-rune, measure
+  the plain one, print the styled one. The viewer's footer broke this rule for
+  three slices and only a *second theme* exposed it — mono emits fewer escapes,
+  so the same cut kept a different amount of text.
+- **No line may be wider than the terminal**, on any screen, at any size:
+  `TestNoLineIsWiderThanTheTerminal` checks every width from 0 to 100. An
+  overflowing line is soft-wrapped by the terminal, which makes the frame taller
+  than it claims and walks it down the screen — the horizontal twin of the bug
+  `padLines` exists for. Every component floors its own columns (size at 10, name
+  at 4), and those floors add up to more than a narrow terminal has, so each one
+  gives up in turn: the margin, then the padding, then the chrome, then all but
+  the one thing worth saying. Below one column `View` draws nothing at all.
+  `clipTo` is the tool: it fits plain text to *exactly* a width, because
+  truncation alone can come back a column short rather than split a wide rune.
 - **The analyzer cannot be cancelled** — it has no context and no `Stop()`.
   Quitting mid-scan ends the program and lets the walk die with the process. Do
   not add cancellation by editing `pkg/analyze`; that file is upstream-owned.

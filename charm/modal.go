@@ -15,6 +15,9 @@ const (
 	modalMaxWidth = 64
 	modalPadding  = 2
 	modalBorder   = 2
+	// modalMargin is the gap between the box and the edges of the screen. It is
+	// the first thing given up when the terminal is small — it is only air.
+	modalMargin = 4
 )
 
 // modalWidth is the room the text has. Lipgloss counts padding inside Width, so
@@ -22,20 +25,41 @@ const (
 // It never goes below one column, so a hostile terminal size clamps rather than
 // panicking on a negative repeat count.
 func (m *model) modalWidth() int {
-	return max(m.boxWidth()-modalPadding*2, 1)
+	return max(m.boxWidth()-m.modalPad()*2, 1)
+}
+
+// modalPad is the breathing room inside the box, and the second thing given up
+// after the margin. Before the border, which is what makes the box legible as a
+// box at all.
+func (m *model) modalPad() int {
+	return min(modalPadding, max((m.boxWidth()-1)/2, 0))
 }
 
 // boxWidth is what Lipgloss is told, and excludes only the border it draws around
 // the outside.
+//
+// The hard limit is the terminal itself: a box wider than the screen is wrapped
+// by the terminal, which pushes the frame down on every render — the horizontal
+// form of the bug padLines exists for. So the margin goes first, then the
+// padding, and the box still fits.
 func (m *model) boxWidth() int {
-	return max(min(m.width-4, modalMaxWidth)-modalBorder, 1+modalPadding*2)
+	roomy := min(m.width-modalMargin, modalMaxWidth) - modalBorder
+	return max(min(roomy, m.width-modalBorder), 1)
 }
 
 // centreInList places the modal in the space the list occupies, so the header and
 // footer stay put. lipgloss.Place pads to exactly these dimensions, which is what
 // keeps the frame the right height.
 func (m *model) centreInList(content string) string {
-	box := m.st.modal.Width(m.boxWidth()).Render(content)
+	// A border costs two columns and the content needs at least one. With less
+	// than that there is no box to draw, and drawing one anyway would overflow.
+	// An empty list area is the honest answer for a two-column terminal — the
+	// modal is unreadable at that size either way, and the frame stays put.
+	if m.width < modalBorder+1 {
+		return padLines("", max(m.visibleLines(), 1))
+	}
+
+	box := m.st.modal.Padding(0, m.modalPad()).Width(m.boxWidth()).Render(content)
 
 	return lipgloss.Place(
 		max(m.width, 1), max(m.visibleLines(), 1),
