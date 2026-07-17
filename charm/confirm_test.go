@@ -14,16 +14,35 @@ import (
 	"github.com/pottom/cdu/pkg/device"
 )
 
+// key builds a KeyMsg from the name the model matches on.
+//
+// An unknown name would come back as KeyType(0) — "ctrl+@" — and press would
+// then send a key nothing handles, so the test would assert against a model
+// nobody touched and pass for the wrong reason. So it fails loudly instead, and
+// every name the model switches on has to be in this map.
 func key(s string) tea.KeyMsg {
 	if len(s) == 1 {
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
-	return tea.KeyMsg{Type: map[string]tea.KeyType{
-		"enter": tea.KeyEnter,
-		"esc":   tea.KeyEsc,
-		"left":  tea.KeyLeft,
-		"right": tea.KeyRight,
-	}[s]}
+	t, ok := map[string]tea.KeyType{
+		"enter":     tea.KeyEnter,
+		"esc":       tea.KeyEsc,
+		"left":      tea.KeyLeft,
+		"right":     tea.KeyRight,
+		"up":        tea.KeyUp,
+		"down":      tea.KeyDown,
+		"home":      tea.KeyHome,
+		"end":       tea.KeyEnd,
+		"pgup":      tea.KeyPgUp,
+		"pgdown":    tea.KeyPgDown,
+		"backspace": tea.KeyBackspace,
+		"tab":       tea.KeyTab,
+		"ctrl+c":    tea.KeyCtrlC,
+	}[s]
+	if !ok {
+		panic("key: no KeyType for " + s + " — add it, or the test presses ctrl+@ and passes for nothing")
+	}
+	return tea.KeyMsg{Type: t}
 }
 
 func press(t *testing.T, m *model, keys ...string) *model {

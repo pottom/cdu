@@ -7,10 +7,12 @@
 package charm
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -39,6 +41,12 @@ type UI struct {
 	// getter backs the header's disk line. It is optional: without it, or on a
 	// path that belongs to no listed mount, the line is simply not drawn.
 	getter device.DevicesInfoGetter
+	// showDisks means -d: open on the device list rather than scanning a path.
+	showDisks bool
+
+	// cancel stops a running scan. The walk goroutine reads it, the render loop
+	// writes it, so it is an atomic rather than a field.
+	cancel atomic.Bool
 
 	noUnicode  bool
 	noDelete   bool
@@ -127,6 +135,39 @@ func CreateUI(
 		ui.sortBy = fs.SortByApparentSize
 	}
 	return ui
+}
+
+// A scan is cancelled through the analyzer's own ignore hooks, and this is the
+// whole of how.
+//
+// The analyzer takes no context and has no Stop — gdu's does not either — and
+// pkg/analyze is upstream's file. Editing it would put the scanning engine on
+// the merge conflict surface, which is the single thing this fork's strategy
+// exists to prevent; ADR-001 says so and meant it.
+//
+// But the analyzer asks *us* whether to descend into each directory, and it asks
+// before descending. Answering "ignore it" from the moment cancel is set makes
+// the walk skip every directory it has not yet opened, and the goroutines unwind
+// on their own — promptly, because what is left to do is bounded by the
+// directories already open. That is real cancellation, through a door that was
+// already there. Nothing is abandoned and left running.
+
+// ignoreFunc is gdu's own ignore rules, plus cancellation.
+func (ui *UI) ignoreFunc() common.ShouldDirBeIgnored {
+	inner := ui.CreateIgnoreFunc()
+	return func(name, path string) bool {
+		return ui.cancel.Load() || (inner != nil && inner(name, path))
+	}
+}
+
+// fileTypeFilter is the same trick one level down: the analyzer asks this before
+// it stats a file, so a cancelled walk does not even stat what is left of an
+// open directory.
+func (ui *UI) fileTypeFilter() common.ShouldFileBeIgnored {
+	inner := ui.CreateFileTypeFilter()
+	return func(name string) bool {
+		return ui.cancel.Load() || (inner != nil && inner(name))
+	}
 }
 
 // UseOldSizeBar switches to ASCII runes for terminals without unicode.
@@ -244,10 +285,23 @@ func (ui *UI) ReadFromStorage(_, _ string) error {
 	return notYetInCharmUI("--read-from-storage")
 }
 
-// ListDevices is not implemented in the Charm interface yet.
-func (ui *UI) ListDevices(_ device.DevicesInfoGetter) error {
-	return notYetInCharmUI("-d / --show-disks")
+// ListDevices records that cdu was started with -d. The mount table itself is
+// read inside the Bubble Tea loop.
+//
+// gdu reads it here, before its interface exists. That is fine until a mount is
+// stale, and then the terminal simply sits there with nothing on it — the read
+// can block for a long time and there is no interface yet to say so. Deferring
+// it costs the error return this signature offers, which is a fair trade: the
+// failure is shown on the error screen instead of on stderr.
+func (ui *UI) ListDevices(getter device.DevicesInfoGetter) error {
+	ui.getter = getter
+	ui.showDisks = true
+	return nil
 }
+
+// errNoDeviceGetter is what -d hits when no mount-table reader was supplied,
+// which is a wiring mistake rather than anything the user did.
+var errNoDeviceGetter = errors.New("no device getter: cdu cannot read the mount table")
 
 // SetCollapsePath is accepted but not yet honoured by the Charm interface.
 func (ui *UI) SetCollapsePath(bool) {}

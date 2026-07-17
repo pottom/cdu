@@ -22,6 +22,10 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `filter.go`, `fuzzy.go` — the `/` fuzzy filter and its match highlighting.
 - `viewer.go` — the `v` file pager, with the binary sniff and the read cap.
 - `mouse.go` — wheel-scroll and click-to-select, behind `--mouse`.
+- `disks.go`, `diskgroup.go` — `cdu -d`: the device table, grouped by disk.
+- `topfiles.go` — `T`: the largest files anywhere in the scan.
+- `help.go` — `?`: every key on one screen.
+- `cancel.go` — `esc` during a scan.
 - `icons.go` — the icon cell: markers by default, Nerd Font glyphs behind `--icons`.
 - `icons_table.go` — **generated** from exa's `icons.rs`; do not hand-edit.
 - `style.go` — the palette and the resolved Lipgloss styles.
@@ -83,9 +87,36 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   the one thing worth saying. Below one column `View` draws nothing at all.
   `clipTo` is the tool: it fits plain text to *exactly* a width, because
   truncation alone can come back a column short rather than split a wide rune.
-- **The analyzer cannot be cancelled** — it has no context and no `Stop()`.
-  Quitting mid-scan ends the program and lets the walk die with the process. Do
-  not add cancellation by editing `pkg/analyze`; that file is upstream-owned.
+- **A scan is cancelled through the analyzer's own ignore hook, and only there.**
+  The analyzer takes no context and has no `Stop()`, and `pkg/analyze` is
+  upstream's — editing it would put the scanning engine on the merge conflict
+  surface, which is the one thing the fork strategy exists to prevent. But the
+  analyzer asks *us* whether to descend into each directory, and asks before
+  descending: `ui.ignoreFunc` answers "ignore it" once `ui.cancel` is set, so the
+  walk skips every directory it has not opened and unwinds on its own, bounded by
+  what is already open. `fileTypeFilter` does the same one level down, before the
+  `stat`. `cancel_test.go` proves it stops rather than pretending to, by walking
+  the same tree twice and comparing the work done.
+- **A cancelled scan's tree is thrown away, never shown.** The directories the
+  walk never opened are *absent* from it — not marked, not empty, absent — so
+  every parent above them reports less than it holds. A disk usage tool quietly
+  showing sizes that are too small is worse than one showing nothing, and the
+  next key along is `d`.
+- **`esc` cancels, `q` quits.** `esc` means "out of this" on every other screen,
+  and a scan is a state you can want out of; `q` meaning something else on one
+  screen is how a binding stops being trustworthy. Cancelling goes back to
+  whatever the scan interrupted — the device list, the tree a rescan was
+  refreshing, or out, when it was the only thing cdu was asked to do.
+- **`rescan` keeps the old tree until a new one arrives.** It is still true, and
+  it is where `esc` goes back to.
+- **An analyzer is single-use until it is reset, and forgetting that is a panic.**
+  `SignalGroup.Broadcast` *is* `close(ch)`, so a second `AnalyzeDir` on the same
+  analyzer closes a closed channel and takes the program down. `ResetProgress`
+  re-makes the channels; gdu calls it before every scan. **Every scan goes through
+  `startScan`**, which is the only thing that calls it — a `scanCmd` reached any
+  other way is this bug coming back. It shipped in the first slice and survived
+  900 green tests, because every one of them stopped at the `tea.Cmd` instead of
+  running it; `rescan_test.go` runs it.
 - **`View()` returns exactly `m.height` lines, with no trailing newline.** One
   line too many and the terminal scrolls on every frame. `padLines` both pads and
   clips for this reason: a list height is not always a whole number of entries,
@@ -187,6 +218,40 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   a click on the already-selected row opens it (there is no terminal double-click).
   No drag or hover — those cost the user their terminal's own text selection.
 
+### The other screens
+
+- **The device list is grouped by physical disk, and the grouping is a spelled-out
+  heuristic.** A flat table lied: six APFS volumes of one container each report
+  the container's space, so it read as six half-terabyte disks. A header says "4
+  volumes sharing one pool of space" — inferred from every device reporting the
+  same total *and* free to the byte, because nothing in the mount table says it.
+  `diskPatterns` lists each device-name form rather than inferring: "strip the
+  trailing digits" turns `nvme0n1` into `nvme0n` and files `loop0` with `loop1`,
+  and a wrong tree is invisible. `/dev/mapper` is left ungrouped — an LVM volume
+  can span disks, which is the point of LVM.
+- **Disk headers are not selectable.** A container has no mount point, so enter on
+  one would do nothing, and a cursor you can park somewhere inert reads as broken.
+- **The largest-files collect runs on the render loop**, which is the one
+  deliberate exception to the tea.Cmd rule — and it is measured, not assumed: 3 ms
+  at 12k items, 23 ms at 294k, 161 ms at 2.7M. The rule is about I/O that can hang
+  without bound. Off-loop it would be a data race: `CollectTopFiles` reads the tree
+  through `GetFiles`, which takes no lock (the engine ships `GetFilesLocked` for
+  exactly this), and the render loop is the only thread allowed to mutate it.
+- **The destructive keys ask `target()`, not the browser.** The largest-files list
+  has no "current directory", so the item is asked where it lives. Any new screen
+  with rows belongs in `target`.
+- **The modal, the viewer and the help return to where they were opened from**, and
+  those fields default to `screenBrowse` — the zero value of a `screen` is
+  `screenScanning`, and closing onto the scan screen is not a place you can be.
+- **`T` is not `--top`.** That flag forces gdu's non-interactive mode, whose output
+  is byte-for-byte gdu's. The flag keeps its meaning; the screen has a key.
+- **The help describes cdu's bindings, not the mock's.** `cdu-4-help.html` predates
+  most of them and contradicts itself — it gives `d` as both "delete selected" and
+  "list mounted disks", and `-d` is a flag. `TestHelpCoversEveryFooterKey` is the
+  seam between the two places that describe keys: it cannot check the words are
+  still true, but a key can never be silently undocumented. It caught one within a
+  minute of being written.
+
 ### Colour and unicode
 
 - **`--no-color` drops colour, not attributes.** Bold, reverse and underline are the
@@ -226,16 +291,17 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 
 ## Work Guidance
 
-Not yet implemented, and each pointing at `--classic` with an explicit error
-rather than failing silently: `ListDevices` (`-d`), `ReadFromStorage`
-(`--read-from-storage`). The disks/top-files/help screens land in later slices. The
-footer advertises only bindings that exist — do not list a key before it works, and
-`u` appears only when there is something to undo.
+Still pointing at `--classic` with an explicit error rather than failing
+silently: `ReadFromStorage` (`--read-from-storage`). The footer advertises only
+bindings that exist — do not list a key before it works, and `u` appears only when
+there is something to undo.
 
 Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
 menu, `t` column menu (or direct `a`/`B`/`c`/`m`; `t` then `s` saves the view),
 `v` view file, `d` trash, `D` delete permanently, `e` empty a file, `u` undo the
-last trash, `r` rescan.
+last trash, `r` rescan, `T` largest files, `?` help, `esc` back / cancel a scan.
+**`help.go` is the list that has to be right** — add a binding there, or the
+drift test fails.
 
 Flags this package reads: `--no-delete`, `--no-view-file`, `--mouse`, `--icons`,
 `--no-unicode`, `--no-color`, `--theme`, and the `theme:`/`sorting:` config

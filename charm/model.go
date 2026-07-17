@@ -21,6 +21,9 @@ const (
 	screenBrowse
 	screenConfirm
 	screenViewer
+	screenDisks
+	screenTop
+	screenHelp
 	screenError
 )
 
@@ -33,14 +36,23 @@ const progressInterval = 100 * time.Millisecond
 // blinks it once a second.
 const blinkTicks = 5
 
-// keyEscape and keyEnter back out of and accept the modes and modals. They are
-// the two keys that always mean the same thing, which is why nothing else may be
-// bound to them.
+// The keys that mean the same thing on every screen. keyEscape and keyEnter in
+// particular always back out of and accept, which is why nothing else may be
+// bound to them; the rest are named because more than one screen has a list to
+// move around in, and a list is a list.
 const (
 	keyEscape    = "esc"
 	keyEnter     = "enter"
 	keyBackspace = "backspace"
 	keyLeft      = "left"
+	keyRight     = "right"
+	keyUp        = "up"
+	keyDown      = "down"
+	keyHome      = "home"
+	keyEnd       = "end"
+	keyPgUp      = "pgup"
+	keyPgDown    = "pgdown"
+	keyCtrlC     = "ctrl+c"
 )
 
 type model struct {
@@ -98,6 +110,10 @@ type model struct {
 
 	// confirm is the pending destructive operation, nil when there is none.
 	confirm *confirmState
+	// confirmFrom is the screen the modal was opened from, and the screen closing
+	// it returns to. A delete asked for in the largest-files list must not drop
+	// you into the browser when you cancel it.
+	confirmFrom screen
 
 	// lastTrashed is what undo would put back. Only a trashed item can come back,
 	// so a permanent delete leaves this nil — there is simply nothing to restore.
@@ -128,6 +144,37 @@ type model struct {
 	// viewer holds the file being read with v: its lines, the scroll offset, and
 	// whether the read was capped. Nil when not viewing.
 	viewer *viewerState
+	// viewerFrom is the screen v was pressed on, and the one closing returns to.
+	viewerFrom screen
+
+	// disks is the mount table, when cdu was started with -d. It is kept for the
+	// life of the program rather than re-read: it is the scan's parent, and back
+	// at the top of the tree returns to it. Nil means cdu was not started with -d,
+	// which is also what makes back at the top do nothing instead.
+	disks device.Devices
+	// diskRows is that table as a tree — a row per physical disk, then a row per
+	// device on it. The cursor indexes this, not disks: what is on screen is what
+	// the arrow keys move over.
+	diskRows   []diskRow
+	diskCursor int
+	diskOffset int
+
+	// cancelling means esc was pressed during a scan and the walk is unwinding.
+	// It cannot stop at once — what is already open still has to finish — so the
+	// screen says so, and the tree that eventually arrives is thrown away.
+	cancelling bool
+
+	// topFiles is the biggest files anywhere in the scan (T). It is a snapshot,
+	// taken when the key is pressed rather than kept up to date: it is a question
+	// you ask, not a view that has to stay true.
+	topFiles  fs.Files
+	topCursor int
+	topOffset int
+
+	// helpFrom is the screen ? was pressed on, and the one it returns to. The
+	// help is reachable from all of them.
+	helpFrom   screen
+	helpOffset int
 }
 
 type (
@@ -154,6 +201,13 @@ func newModel(ui *UI) *model {
 		st:      st,
 		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
+		// Where the modal and the viewer return to when they close. They are set
+		// again on the way in, but the zero value of a screen is screenScanning —
+		// so anything that missed a step would close onto the scan screen, which is
+		// not a place you can be. The browser is the answer to "back" for everything
+		// that does not say otherwise.
+		confirmFrom: screenBrowse,
+		viewerFrom:  screenBrowse,
 		// Anything worth saying about the theme or the config is said here rather
 		// than on stderr, which the alternate screen would wipe before it could be
 		// read.
@@ -163,6 +217,11 @@ func newModel(ui *UI) *model {
 }
 
 func (m *model) Init() tea.Cmd {
+	// -d opens on the device list: there is no path to walk until one is picked.
+	if m.ui.showDisks {
+		m.scr = screenScanning
+		return tea.Batch(m.spinner.Tick, disksCmd(m.ui))
+	}
 	// A saved scan opened with -f is already in memory; there is nothing to walk.
 	if m.ui.topDir != nil {
 		m.enterDir(m.ui.topDir)
@@ -170,7 +229,7 @@ func (m *model) Init() tea.Cmd {
 		m.scr = screenBrowse
 		return deviceCmd(m.ui)
 	}
-	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd(), deviceCmd(m.ui))
+	return tea.Batch(m.startScan(), deviceCmd(m.ui))
 }
 
 // deviceCmd resolves the volume the scan root sits on. It runs off the render
@@ -214,10 +273,32 @@ func deviceFor(path string, mounts device.Devices) *device.Device {
 }
 
 // scanCmd runs the blocking walk off the render loop.
+// startScan resets the analyzer and returns the commands that walk a tree.
+//
+// The reset is not housekeeping. An analyzer's done-channel is *closed* when its
+// walk finishes, and Broadcast is a close — so a second AnalyzeDir on the same
+// analyzer closes a closed channel, which is a panic rather than an error. Only
+// the very first scan works without this; gdu calls ResetProgress before every
+// one of its own for the same reason.
+//
+// It runs here, on the render loop, rather than inside the command: Init swaps
+// the analyzer's channels, and the loop reads its progress on every tick.
+//
+// Every scan goes through this function. Adding another call to scanCmd that
+// does not is the whole bug, so there is no reason to have one.
+func (m *model) startScan() tea.Cmd {
+	m.ui.Analyzer.ResetProgress()
+	m.ui.cancel.Store(false)
+	m.cancelling = false
+	m.scr = screenScanning
+	m.progress = common.CurrentProgress{}
+	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd())
+}
+
 func scanCmd(ui *UI) tea.Cmd {
 	return func() tea.Msg {
 		defer debug.FreeOSMemory()
-		dir := ui.Analyzer.AnalyzeDir(ui.scanPath, ui.CreateIgnoreFunc(), ui.CreateFileTypeFilter())
+		dir := ui.Analyzer.AnalyzeDir(ui.scanPath, ui.ignoreFunc(), ui.fileTypeFilter())
 		if dir == nil {
 			return scanErrMsg{err: notYetInCharmUI("scanning " + ui.scanPath)}
 		}
@@ -258,6 +339,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case scanDoneMsg:
+		if m.cancelling {
+			return m.afterCancel()
+		}
 		m.topDir = msg.dir
 		m.enterDir(msg.dir)
 		m.scr = screenBrowse
@@ -272,6 +356,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dev = msg.dev
 		return m, nil
 
+	case spinner.TickMsg:
+		if m.scr != screenScanning {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
+	return m.handleResultMsg(msg)
+}
+
+// handleResultMsg takes the messages that carry the result of work done off the
+// render loop. They are split out from Update only because it outgrew its length
+// budget; there is no other line between them.
+func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
 	case fileLoadedMsg:
 		m.applyFileLoaded(msg)
 		return m, nil
@@ -280,20 +380,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyViewSaved(msg)
 		return m, nil
 
+	case disksMsg:
+		m.applyDisks(msg)
+		return m, nil
+
 	case deleteDoneMsg:
 		cmd := m.applyDelete(msg)
 		return m, cmd
 
 	case undoDoneMsg:
 		cmd := m.applyUndo(msg)
-		return m, cmd
-
-	case spinner.TickMsg:
-		if m.scr != screenScanning {
-			return m, nil
-		}
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
 	return m, nil
@@ -327,14 +423,30 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if m.scr == screenScanning {
+		return m.handleScanningKey(msg)
+	}
+	if m.scr == screenHelp {
+		return m.handleHelpKey(msg)
+	}
+	// ? reaches the help from anywhere it is not already a letter being typed —
+	// the modal, the filter and the menus are all handled above, and each of them
+	// takes every key whole.
+	if msg.String() == "?" {
+		return m.openHelp()
+	}
+
 	switch msg.String() {
-	case "q", "ctrl+c":
-		// The analyzer exposes no cancellation — no context, no Stop. Quitting
-		// mid-scan therefore tears down the program and lets the walk goroutine
-		// die with the process, which is what gdu effectively does too.
+	case "q", keyCtrlC:
 		return m, tea.Quit
 	}
 
+	if m.scr == screenDisks {
+		return m.handleDisksKey(msg)
+	}
+	if m.scr == screenTop {
+		return m.handleTopKey(msg)
+	}
 	if m.scr != screenBrowse {
 		return m, nil
 	}
@@ -374,6 +486,8 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		cmd := m.askUndo()
 		return m, cmd
+	case "T":
+		return m.collectTopFiles()
 	case "r":
 		cmd := m.rescan()
 		return m, cmd
@@ -405,6 +519,13 @@ func (m *model) ascend() {
 	}
 	parent := m.currentDir.GetParent()
 	if parent == nil {
+		// At the top of the tree. If cdu was started with -d, the device list is
+		// where this scan came from, so it is what "back" means — the same rule gdu
+		// follows, and the reason the list needs no key of its own.
+		if m.disks != nil {
+			m.scr = screenDisks
+			m.status, m.statusIsError = "", false
+		}
 		return
 	}
 	child := m.currentDir

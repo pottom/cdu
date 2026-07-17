@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/pottom/cdu/internal/common"
 	"github.com/pottom/cdu/internal/trash"
 	"github.com/pottom/cdu/pkg/fs"
 )
@@ -70,10 +69,27 @@ type undoDoneMsg struct {
 	err    error
 }
 
+// target is the item a destructive key acts on, and the directory it lives in.
+//
+// The browser's answer is the row under the cursor and the directory being
+// shown. The largest-files list has the same rows and no directory being shown,
+// so it asks the item where it lives — which is exactly the question that list
+// exists to answer.
+func (m *model) target() (item, parent fs.Item) {
+	if m.scr == screenTop {
+		it := m.selectedTop()
+		if it == nil {
+			return nil, nil
+		}
+		return it, it.GetParent()
+	}
+	return m.selected(), m.currentDir
+}
+
 // askConfirm opens the modal for the selected item, or explains why it will not.
 func (m *model) askConfirm(act action) {
-	item := m.selected()
-	if item == nil {
+	item, parent := m.target()
+	if item == nil || parent == nil {
 		return
 	}
 
@@ -98,9 +114,12 @@ func (m *model) askConfirm(act action) {
 		return
 	}
 
+	// Where to go back to when the modal closes. A confirm opened from the
+	// largest-files list must return there, not drop you into the browser.
+	m.confirmFrom = m.scr
 	m.confirm = &confirmState{
 		item:          item,
-		parent:        m.currentDir,
+		parent:        parent,
 		act:           act,
 		requireTyping: isProtected(item.GetPath()),
 	}
@@ -210,20 +229,19 @@ func (m *model) rescan() tea.Cmd {
 		return nil
 	}
 
-	m.scr = screenScanning
-	m.progress = common.CurrentProgress{}
-	m.rows = nil
-	m.currentDir = nil
-	m.cursor, m.offset = 0, 0
-
-	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd())
+	// The tree we have is kept until a new one arrives. It is still true — the
+	// rescan is asking whether it still is — and it is what esc goes back to if
+	// the walk is cancelled. The scanning screen does not draw the list anyway, so
+	// there is nothing to gain by clearing it early. enterDir replaces the lot when
+	// the new tree lands.
+	return m.startScan()
 }
 
 func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	c := m.confirm
 
 	switch msg.String() {
-	case "esc", "ctrl+c":
+	case keyEscape, keyCtrlC:
 		m.cancelConfirm()
 		return m, nil
 
@@ -244,7 +262,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if c.requireTyping && !c.typedFully() {
 			return m, nil
 		}
-		m.scr = screenBrowse
+		m.scr = m.confirmFrom
 		m.confirm = nil
 		m.pending = c.item
 		m.status, m.statusIsError = c.inProgressLabel(), false
@@ -271,7 +289,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) cancelConfirm() {
 	m.confirm = nil
-	m.scr = screenBrowse
+	m.scr = m.confirmFrom
 }
 
 func (c *confirmState) typedFully() bool { return c.typed == confirmWord }
@@ -292,6 +310,7 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 		// way up the tree, which is why the tree half is not reimplemented here.
 		msg.parent.RemoveFile(msg.item)
 		m.dropRow(msg.item)
+		m.dropTopFile(msg.item)
 	case actionEmpty:
 		msg.parent.RemoveFile(msg.item)
 		msg.parent.AddFile(emptiedFile(msg.item, msg.parent))

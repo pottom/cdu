@@ -33,6 +33,27 @@ func padLines(s string, n int) string {
 	return s + strings.Repeat("\n", n-len(lines))
 }
 
+// joinLines is strings.Join with a newline, named for what it is doing so a
+// caller building a screen reads as building a screen.
+func joinLines(lines []string) string {
+	return strings.Join(lines, "\n")
+}
+
+// lineWidth is how many columns a plain string occupies. It is runewidth's, and
+// naming it here is a reminder of which one to reach for: this is only true of
+// text with no escapes in it. For anything already styled, lipgloss.Width.
+func lineWidth(s string) int { return runewidth.StringWidth(s) }
+
+// spaces is n blanks, and nothing at all for n < 1 — strings.Repeat panics on a
+// negative count, and every width here is arithmetic that can go negative on a
+// small enough terminal.
+func spaces(n int) string {
+	if n < 1 {
+		return ""
+	}
+	return strings.Repeat(" ", n)
+}
+
 // clipTo fits a plain string to exactly width columns: truncating a long one and
 // padding a short one.
 //

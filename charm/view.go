@@ -72,8 +72,20 @@ func (m *model) headerHeight() int {
 // showDiskLine gates the header's second line. It is the first thing the header
 // gives up: it is the least essential row on screen, and it costs a line of the
 // list on every terminal.
+// showDiskLine reports whether the header carries the volume gauge.
+//
+// The gauge describes the scan — "the disk this tree lives on, and how full it
+// is". The device list is not a scan, so on that screen there is nothing for it
+// to describe, and the last device analyzed is simply stale: it would sit above
+// a table that already has every device's usage in it, claiming to be about one
+// of them.
+//
+// It is a rule about what the line means rather than a matter of clearing m.dev
+// on the way out, because a rule cannot be forgotten by whatever else learns to
+// reach this screen.
 func (m *model) showDiskLine() bool {
-	return m.dev != nil &&
+	return m.scr != screenDisks &&
+		m.dev != nil &&
 		m.dev.Size > 0 &&
 		m.width >= minWidthForDiskLine &&
 		m.height >= minHeightForDiskLine
@@ -140,6 +152,12 @@ func (m *model) View() string {
 		return m.viewConfirm()
 	case screenViewer:
 		return m.viewViewer()
+	case screenDisks:
+		return m.viewDisks()
+	case screenTop:
+		return m.viewTop()
+	case screenHelp:
+		return m.viewHelp()
 	}
 	return ""
 }
@@ -254,6 +272,12 @@ func (m *model) viewScanBody() string {
 		humanCount(m.progress.ItemCount),
 		m.ui.formatSize(m.progress.TotalUsage),
 	)
+	if m.cancelling {
+		// The walk cannot stop mid-directory, so there is a moment between esc and
+		// the screen changing. Saying so is what stops that moment reading as a key
+		// that did not register.
+		status = "cancelling · finishing the directories already open"
+	}
 
 	// spinner(1) + gap(1) + status + cursor(1)
 	const chrome = 3
@@ -347,7 +371,21 @@ func (m *model) viewBrand() string {
 // An accepted filter that is no longer being typed is shown here too, so that a
 // directory listing fewer rows than it holds is never a mystery.
 func (m *model) headerPath() string {
+	if m.scr == screenDisks {
+		return "select a device to analyze"
+	}
+	if m.scr == screenTop {
+		return fmt.Sprintf("largest %d files, any depth", len(m.topFiles))
+	}
+	if m.scr == screenHelp {
+		return "every key, one screen"
+	}
 	if m.scr == screenScanning {
+		// -d comes up on this screen while the mount table is being read, and has no
+		// path to name until a device is picked — "scanning " alone reads like a bug.
+		if m.ui.showDisks && m.ui.scanPath == "" {
+			return "reading the mount table"
+		}
 		return "scanning " + m.ui.scanPath
 	}
 	if m.currentDir == nil {
@@ -656,7 +694,28 @@ var (
 		{key: "esc", label: "cancel"},
 	}
 	scanKeys = []keyHint{
+		{key: "esc", label: "cancel"},
 		{key: "q", label: "quit"},
+	}
+	diskKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "↵", label: "analyze"},
+		{key: "r", label: "reread", drop: 3},
+		{key: "q", label: "quit"},
+	}
+	helpKeys = []keyHint{
+		{key: "↑↓", label: "scroll"},
+		{key: "?", label: "close"},
+		{key: "esc", label: "back"},
+	}
+	topKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "↵", label: "reveal"},
+		{key: "v", label: "view", drop: 3},
+		{key: "d", label: "trash", drop: 1},
+		{key: "D", label: "delete", drop: 2},
+		{key: "esc", label: "back"},
+		{key: "q", label: "quit", drop: 4},
 	}
 	confirmKeys = []keyHint{
 		{key: "←→", label: "choose"},
@@ -721,6 +780,12 @@ func (m *model) viewFooter() string {
 	switch {
 	case m.scr == screenScanning:
 		keys = scanKeys
+	case m.scr == screenDisks:
+		keys = diskKeys
+	case m.scr == screenTop:
+		keys = topKeys
+	case m.scr == screenHelp:
+		keys = helpKeys
 	case m.scr == screenConfirm:
 		keys = confirmKeys
 	case m.sortPending:

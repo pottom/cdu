@@ -210,13 +210,39 @@ over it, and the size column starts in the same place regardless. exa arrived at
 the same answer. It is why `iconWidth` is 2 and why nothing may ever sit
 immediately after the glyph.
 
-## Scan cancellation → process exit
+## Scan cancellation → the door that was already there
 
-Not a terminal limitation, but an engine one, and it shows up in the UI.
+Not a terminal limitation. An engine one, and for a long time it stood.
 
-gdu's analyzer exposes no cancellation: no `context.Context`, no `Stop()`. Pressing
-`q` during a scan therefore tears down the Bubble Tea program and exits, letting
-the walk goroutine die with the process — which is effectively what gdu does too.
-Fixing this properly means adding a context to `pkg/analyze`, which is
-upstream-owned; the right venue is a PR to gdu, not a local edit that would put the
-engine on our merge conflict surface.
+gdu's analyzer exposes no cancellation: no `context.Context`, no `Stop()`. So
+`q` during a scan tore down the program and let the walk goroutine die with the
+process — which is effectively what gdu does too. The obvious fix is a context in
+`pkg/analyze`, and that is exactly what the fork strategy forbids: the engine is
+upstream's, and putting it on the merge conflict surface is the cost this whole
+architecture exists to avoid paying, on every gdu release, forever.
+
+The way out was already in the interface. The analyzer asks *us* whether to
+ignore each directory, through a hook we supply, and it asks **before it
+descends**:
+
+```go
+if a.ignoreDir(name, entryPath) { continue }
+```
+
+So `ignoreFunc` answers "ignore it" from the moment cancel is set. The walk skips
+every directory it has not yet opened, and the goroutines unwind on their own —
+promptly, because the work left is bounded by the directories already open.
+`fileTypeFilter` does the same one level down, before the `stat`. Nothing is
+abandoned to run in the background; the walk really stops. No upstream file
+changed.
+
+The tree it returns is thrown away. The directories the walk never opened are not
+marked or empty in it — they are *absent*, so every parent above them reports
+less than it holds. A disk usage tool showing sizes that are quietly too small is
+worse than one showing nothing at all, and the key next to `esc` is `d`.
+
+`esc` cancels and `q` still quits, because `esc` means "out of this" on every
+other screen and a `q` that meant something else here would be a binding you
+could not trust. Cancelling lands wherever the scan interrupted: the device list,
+the tree a rescan was refreshing, or out — when the scan was the only thing cdu
+had been asked to do, there is nothing behind it to show.

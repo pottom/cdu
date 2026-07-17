@@ -64,6 +64,17 @@ those types. That kills four things cdu actually needs:
 There is also no cancellation anywhere in the analyzer API — no `context.Context`,
 no `Stop()` — which a wrapper cannot add from outside.
 
+> **Correction, PR7.** The last clause is wrong, and worth leaving here rather
+> than quietly editing: a wrapper *can* add cancellation from outside, and cdu
+> now does. The analyzer consults a caller-supplied hook before descending into
+> each directory (`AnalyzeDir`'s `ignore` parameter), so answering "ignore it"
+> from that moment makes the walk skip everything it has not opened and unwind on
+> its own. See `charm/ui.go`'s `ignoreFunc` and `docs/terminal-translation.md`.
+>
+> The decision below does not change — it rests on the four numbered points, not
+> on this one — but the claim was stated with more confidence than it had earned,
+> and it is the reason cancellation went unbuilt for six slices.
+
 **And the API is not stable.** gdu has never bumped its major despite breaking its
 own packages inside v5.3x:
 
