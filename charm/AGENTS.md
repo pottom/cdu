@@ -86,6 +86,14 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - **The analyzer cannot be cancelled** — it has no context and no `Stop()`.
   Quitting mid-scan ends the program and lets the walk die with the process. Do
   not add cancellation by editing `pkg/analyze`; that file is upstream-owned.
+- **An analyzer is single-use until it is reset, and forgetting that is a panic.**
+  `SignalGroup.Broadcast` *is* `close(ch)`, so a second `AnalyzeDir` on the same
+  analyzer closes a closed channel and takes the program down. `ResetProgress`
+  re-makes the channels; gdu calls it before every scan. **Every scan goes through
+  `startScan`**, which is the only thing that calls it — a `scanCmd` reached any
+  other way is this bug coming back. It shipped in the first slice and survived
+  900 green tests, because every one of them stopped at the `tea.Cmd` instead of
+  running it; `rescan_test.go` runs it.
 - **`View()` returns exactly `m.height` lines, with no trailing newline.** One
   line too many and the terminal scrolls on every frame. `padLines` both pads and
   clips for this reason: a list height is not always a whole number of entries,

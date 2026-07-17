@@ -17,23 +17,79 @@ import (
 // a mode you toggle — it is where the scan came from, so it sits where every
 // other "where I came from" sits, on the back key.
 
-// diskCols are the widths of the fixed columns. The device name and mount point
-// take what is left, because they are the only two that vary in length.
 const (
-	diskSizeWidth  = 8
-	diskUsageWidth = 5
-	// The usage bar. It is the same renderer the rows use, so a device reads like
-	// a directory does.
+	// diskSizeWidth is sizeColWidth for the same reason: "1023.9 GiB" is the
+	// widest string formatSize can make, and it is ten columns. It was eight
+	// once, and since padLeft pads without clipping, every row with a size over
+	// 99.9 was quietly a column too wide — which tripped the too-narrow fallback
+	// and painted the whole row, usage bar included, in one flat colour. It read
+	// as a colour bug and was arithmetic.
+	diskSizeWidth = sizeColWidth
+	// diskTypeWidth holds the longest filesystem name worth showing: squashfs and
+	// overlayfs on Linux, autofs on macOS.
+	diskTypeWidth = 8
+	diskPctWidth  = 5
+	// diskBarCells is the usage bar, drawn by the same renderer the file rows use
+	// so that a device reads like a directory.
 	diskBarCells = 16
 
-	// Below these the table gives up a column rather than overflow.
-	minWidthForDiskUsed  = 52
-	minWidthForDiskFree  = 62
-	minWidthForDiskBar   = 74
-	minWidthForDiskMount = 90
-
-	minDiskNameWidth = 6
+	minDiskNameWidth  = 8
+	minDiskMountWidth = 10
 )
+
+// diskLayout is which columns fit and how wide the two elastic ones are.
+//
+// It is derived from the widths themselves rather than from a table of
+// breakpoint constants. Breakpoints have to be kept in step with the widths by
+// hand, and when they drift the row overflows its own budget silently — which is
+// exactly how the bar turned white.
+type diskLayout struct {
+	name  int
+	mount int // 0 when there is no room for the mount point
+	used  bool
+	free  bool
+	ftype bool
+	bar   bool
+}
+
+func (m *model) diskLayout() diskLayout {
+	l := diskLayout{}
+
+	// The core every width keeps: gutter, name, size, percent. A device you cannot
+	// name is not a device you can choose, and the percentage is the answer to the
+	// question the screen exists for.
+	fixed := 1 + 1 + diskSizeWidth + 1 + diskPctWidth
+
+	// Then each column while there is still room for a readable name, in the order
+	// they stop being worth their columns. The bar goes before the mount point:
+	// it is decoration for a percentage that is already there in figures, and
+	// "/Volumes/Backup" says what a disk is *for* in a way /dev/disk4s2 never does.
+	for _, opt := range []struct {
+		cost int
+		on   *bool
+	}{
+		{1 + diskSizeWidth, &l.used},
+		{1 + diskSizeWidth, &l.free},
+		{1 + diskTypeWidth, &l.ftype},
+		{1 + diskBarCells, &l.bar},
+	} {
+		if m.width-fixed-opt.cost >= minDiskNameWidth {
+			*opt.on = true
+			fixed += opt.cost
+		}
+	}
+
+	rest := m.width - fixed
+	if rest >= minDiskNameWidth+1+minDiskMountWidth {
+		// Both elastic columns fit. The mount point gets the larger share for the
+		// same reason it outranks the bar.
+		l.name = max(rest/3, minDiskNameWidth)
+		l.mount = rest - l.name - 1
+		return l
+	}
+	l.name = max(rest, minDiskNameWidth)
+	return l
+}
 
 type disksMsg struct {
 	devices device.Devices
@@ -96,9 +152,9 @@ func (m *model) analyzeDisk() (tea.Model, tea.Cmd) {
 	m.cursor, m.offset = 0, 0
 	m.dev = dev
 	m.status, m.statusIsError = "", false
-	m.scr = screenScanning
 
-	return m, tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd())
+	cmd := m.startScan()
+	return m, cmd
 }
 
 func (m *model) handleDisksKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -139,122 +195,185 @@ func (m *model) moveDiskCursor(delta int) {
 	m.diskOffset = min(max(m.diskOffset, 0), max(len(m.disks)-height, 0))
 }
 
-// diskNameWidth is what the device name and mount point columns share. Both are
-// unbounded, so they take whatever the fixed columns leave.
-func (m *model) diskNameWidth() int {
-	used := 1 + diskSizeWidth // gutter + size
-	if m.width >= minWidthForDiskUsed {
-		used += 1 + diskSizeWidth
+// cell fits a string into exactly n columns, left-aligned. Both halves matter:
+// padding alone lets a long value push the row over its budget, and truncating
+// alone lets a short one pull the next column left.
+func cell(s string, n int) string {
+	if n < 1 {
+		return ""
 	}
-	if m.width >= minWidthForDiskFree {
-		used += 1 + diskSizeWidth
-	}
-	if m.width >= minWidthForDiskBar {
-		used += 1 + diskBarCells
-	}
-	used += 1 + diskUsageWidth
+	return runewidth.FillRight(runewidth.Truncate(s, n, "…"), n)
+}
 
-	rest := m.width - used
-	if m.width >= minWidthForDiskMount {
-		// Split what is left between the name and the mount point. The mount point
-		// is the more useful of the two — /Volumes/Backup says what a disk is for,
-		// /dev/disk4s2 does not — so it gets the larger half.
-		return max(rest/3, minDiskNameWidth)
+// cellRight is cell, right-aligned, for figures.
+func cellRight(s string, n int) string {
+	if n < 1 {
+		return ""
 	}
-	return max(rest, minDiskNameWidth)
+	return padLeft(runewidth.Truncate(s, n, ""), n)
+}
+
+// cellPath is cell for a device name or a mount point, which are the two things
+// here whose *end* is what identifies them. Cut from the left, /dev/disk4s1 and
+// /dev/disk4s2 both become "/dev/disk4…" — the same string for two different
+// disks, in the one column you are choosing between them by.
+func cellPath(s string, n int) string {
+	if n < 1 {
+		return ""
+	}
+	return runewidth.FillRight(middleTruncate(s, n), n)
 }
 
 func (m *model) viewDisksHeader() string {
 	if m.width < 1 {
 		return ""
 	}
-	nameWidth := m.diskNameWidth()
+	l := m.diskLayout()
 
-	line := " " + runewidth.FillRight(runewidth.Truncate("Device", nameWidth, "…"), nameWidth)
-	line += " " + padLeft("Size", diskSizeWidth)
-	if m.width >= minWidthForDiskUsed {
-		line += " " + padLeft("Used", diskSizeWidth)
+	line := " " + cell("Device", l.name) + " " + cellRight("Size", diskSizeWidth)
+	if l.used {
+		line += " " + cellRight("Used", diskSizeWidth)
 	}
-	if m.width >= minWidthForDiskFree {
-		line += " " + padLeft("Free", diskSizeWidth)
+	if l.free {
+		line += " " + cellRight("Free", diskSizeWidth)
 	}
-	if m.width >= minWidthForDiskBar {
-		line += " " + runewidth.FillRight("Usage", diskBarCells)
+	if l.ftype {
+		line += " " + cell("Type", diskTypeWidth)
 	}
-	line += " " + padLeft("%", diskUsageWidth)
-	if m.width >= minWidthForDiskMount {
-		mountWidth := max(m.width-runewidth.StringWidth(line)-1, 1)
-		line += " " + runewidth.FillRight(runewidth.Truncate("Mounted on", mountWidth, "…"), mountWidth)
+	if l.bar {
+		line += " " + cell("Usage", diskBarCells)
+	}
+	line += " " + cellRight("%", diskPctWidth)
+	if l.mount > 0 {
+		line += " " + cell("Mounted on", l.mount)
 	}
 	return m.st.dim.Render(clipTo(line, m.width))
 }
 
-// viewDiskRow is one device. It is composed as plain text at an exact width and
-// styled after, like every other row here — runewidth counts escape bytes as
-// columns, so a styled string cut to the terminal loses most of itself.
+// diskRowPlain is the row as bare text, at exactly the width the layout says.
+// Everything is measured here, where the string's length is what it looks like;
+// the styled version below is built from the same pieces, never measured.
+func (m *model) diskRowPlain(dev *device.Device, l *diskLayout) string {
+	s := cellPath(dev.Name, l.name) + " " + cellRight(m.ui.formatSize(dev.Size), diskSizeWidth)
+	if l.used {
+		s += " " + cellRight(m.ui.formatSize(dev.GetUsage()), diskSizeWidth)
+	}
+	if l.free {
+		s += " " + cellRight(m.ui.formatSize(dev.Free), diskSizeWidth)
+	}
+	if l.ftype {
+		s += " " + cell(dev.Fstype, diskTypeWidth)
+	}
+	if l.bar {
+		s += " " + m.bar.plainCells(diskFrac(dev), diskBarCells)
+	}
+	s += " " + cellRight(formatPct(dev.GetUsage(), dev.Size), diskPctWidth)
+	if l.mount > 0 {
+		s += " " + cellPath(dev.MountPoint, l.mount)
+	}
+	return s
+}
+
+func diskFrac(dev *device.Device) float64 {
+	if dev.Size <= 0 {
+		return 0
+	}
+	return float64(dev.GetUsage()) / float64(dev.Size)
+}
+
+// viewDiskRow is one device, composed as plain text at an exact width and styled
+// after — runewidth counts escape bytes as columns, so a styled string cut to
+// the terminal loses most of itself.
 func (m *model) viewDiskRow(dev *device.Device, selected bool) string {
 	if m.width < 1 {
 		return ""
 	}
-	nameWidth := m.diskNameWidth()
-	frac := 0.0
-	if dev.Size > 0 {
-		frac = float64(dev.GetUsage()) / float64(dev.Size)
-	}
-
-	name := runewidth.FillRight(runewidth.Truncate(dev.Name, nameWidth, "…"), nameWidth)
-	sizeText := padLeft(m.ui.formatSize(dev.Size), diskSizeWidth)
-
-	rest := ""
-	if m.width >= minWidthForDiskUsed {
-		rest += " " + padLeft(m.ui.formatSize(dev.GetUsage()), diskSizeWidth)
-	}
-	if m.width >= minWidthForDiskFree {
-		rest += " " + padLeft(m.ui.formatSize(dev.Free), diskSizeWidth)
-	}
-
-	pct := padLeft(formatPct(dev.GetUsage(), dev.Size), diskUsageWidth)
-
-	mount := ""
-	if m.width >= minWidthForDiskMount {
-		fixed := 1 + nameWidth + 1 + diskSizeWidth + runewidth.StringWidth(rest) + 1 + diskUsageWidth
-		if m.width >= minWidthForDiskBar {
-			fixed += 1 + diskBarCells
-		}
-		mountWidth := max(m.width-fixed-1, 1)
-		mount = " " + runewidth.FillRight(runewidth.Truncate(dev.MountPoint, mountWidth, "…"), mountWidth)
-	}
-
-	// The plain row, in full. Every column here has a floor, and on a narrow
-	// enough terminal they add up to more than there is — so this is measured
-	// first and the row is clipped whole when it will not fit, exactly as a file
-	// row is. Composing it anyway would overflow and wrap the frame.
-	plain := name + " " + sizeText + rest
-	if m.width >= minWidthForDiskBar {
-		plain += " " + m.bar.plainCells(frac, diskBarCells)
-	}
-	plain += " " + pct + mount
-	floored := 1+runewidth.StringWidth(plain) > m.width
+	l := m.diskLayout()
 
 	if selected {
-		// One column: the marker alone. There is no room for it and anything to mark.
 		if m.width < 2 {
-			return m.st.accent.Render("▌")
+			return m.st.accent.Render("▌") // no room for a marker and anything to mark
 		}
-		return m.st.accent.Render("▌") + m.st.selected.Render(clipTo(plain, m.width-1))
-	}
-	if floored {
-		return m.st.dirName.Render(clipTo(" "+plain, m.width))
+		return m.viewSelectedDiskRow(dev, &l)
 	}
 
-	out := " " + m.st.dirName.Render(name) +
-		" " + m.st.size.Render(sizeText) +
-		m.st.dim.Render(rest)
-	if m.width >= minWidthForDiskBar {
-		out += " " + m.bar.render(frac, diskBarCells)
+	// Narrower than the columns' own floors add up to. Clip whole rather than
+	// overflow — but without the bar: painting block characters in a text colour
+	// is what made it a white smear rather than a bar.
+	if 1+runewidth.StringWidth(m.diskRowPlain(dev, &l)) > m.width {
+		flat := l
+		flat.bar = false
+		return m.st.dirName.Render(clipTo(" "+m.diskRowPlain(dev, &flat), m.width))
 	}
-	out += " " + m.st.pct.Render(pct) + m.st.dim.Render(mount)
+
+	out := " " + m.st.dirName.Render(cellPath(dev.Name, l.name)) +
+		" " + m.st.size.Render(cellRight(m.ui.formatSize(dev.Size), diskSizeWidth))
+	if l.used {
+		out += " " + m.st.dim.Render(cellRight(m.ui.formatSize(dev.GetUsage()), diskSizeWidth))
+	}
+	if l.free {
+		out += " " + m.st.dim.Render(cellRight(m.ui.formatSize(dev.Free), diskSizeWidth))
+	}
+	if l.ftype {
+		out += " " + m.st.dim.Render(cell(dev.Fstype, diskTypeWidth))
+	}
+	if l.bar {
+		out += " " + m.bar.render(diskFrac(dev), diskBarCells)
+	}
+	out += " " + m.st.pct.Render(cellRight(formatPct(dev.GetUsage(), dev.Size), diskPctWidth))
+	if l.mount > 0 {
+		out += " " + m.st.dim.Render(cellPath(dev.MountPoint, l.mount))
+	}
 	return out
+}
+
+// viewSelectedDiskRow is the cursor row, and it is composed rather than clipped
+// whole for one reason: the bar.
+//
+// Rendering the whole row in the selection's style paints the bar's block
+// characters in the selection's foreground, and a gradient becomes a white
+// smear. Leaving the bar on the terminal's own background instead punches a
+// strip of terminal through the middle of the block. So the bar is drawn from
+// its own ramp, built on the panel — the row keeps its background and the bar
+// keeps its gradient.
+//
+// The file list dodges this by putting the bar on a line of its own; a table
+// with a bar column cannot.
+func (m *model) viewSelectedDiskRow(dev *device.Device, l *diskLayout) string {
+	// Everything left of the bar, and everything right of it, as plain text at
+	// exact widths — measured before styling, as always.
+	left := cellPath(dev.Name, l.name) + " " + cellRight(m.ui.formatSize(dev.Size), diskSizeWidth)
+	if l.used {
+		left += " " + cellRight(m.ui.formatSize(dev.GetUsage()), diskSizeWidth)
+	}
+	if l.free {
+		left += " " + cellRight(m.ui.formatSize(dev.Free), diskSizeWidth)
+	}
+	if l.ftype {
+		left += " " + cell(dev.Fstype, diskTypeWidth)
+	}
+
+	right := " " + cellRight(formatPct(dev.GetUsage(), dev.Size), diskPctWidth)
+	if l.mount > 0 {
+		right += " " + cellPath(dev.MountPoint, l.mount)
+	}
+
+	// The marker takes the first column; the rest has m.width-1 to live in.
+	budget := m.width - 1
+	if !l.bar {
+		return m.st.accent.Render("▌") + m.st.selected.Render(clipTo(left+right, budget))
+	}
+
+	// The bar's own cells are exact, so the two text halves are clipped around it
+	// rather than the whole row being clipped after the fact.
+	barWidth := min(diskBarCells, max(budget-runewidth.StringWidth(left)-1-runewidth.StringWidth(right), 0))
+	leftWidth := max(budget-barWidth-1-runewidth.StringWidth(right), 0)
+
+	return m.st.accent.Render("▌") +
+		m.st.selected.Render(clipTo(left, leftWidth)) +
+		m.st.selected.Render(" ") +
+		m.bar.renderSelected(diskFrac(dev), barWidth) +
+		m.st.selected.Render(clipTo(right, max(budget-leftWidth-barWidth-1, 0)))
 }
 
 // viewDiskList is exactly visibleLines() lines: the column header, then the

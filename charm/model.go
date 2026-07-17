@@ -192,7 +192,7 @@ func (m *model) Init() tea.Cmd {
 		m.scr = screenBrowse
 		return deviceCmd(m.ui)
 	}
-	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd(), deviceCmd(m.ui))
+	return tea.Batch(m.startScan(), deviceCmd(m.ui))
 }
 
 // deviceCmd resolves the volume the scan root sits on. It runs off the render
@@ -236,6 +236,26 @@ func deviceFor(path string, mounts device.Devices) *device.Device {
 }
 
 // scanCmd runs the blocking walk off the render loop.
+// startScan resets the analyzer and returns the commands that walk a tree.
+//
+// The reset is not housekeeping. An analyzer's done-channel is *closed* when its
+// walk finishes, and Broadcast is a close — so a second AnalyzeDir on the same
+// analyzer closes a closed channel, which is a panic rather than an error. Only
+// the very first scan works without this; gdu calls ResetProgress before every
+// one of its own for the same reason.
+//
+// It runs here, on the render loop, rather than inside the command: Init swaps
+// the analyzer's channels, and the loop reads its progress on every tick.
+//
+// Every scan goes through this function. Adding another call to scanCmd that
+// does not is the whole bug, so there is no reason to have one.
+func (m *model) startScan() tea.Cmd {
+	m.ui.Analyzer.ResetProgress()
+	m.scr = screenScanning
+	m.progress = common.CurrentProgress{}
+	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd())
+}
+
 func scanCmd(ui *UI) tea.Cmd {
 	return func() tea.Msg {
 		defer debug.FreeOSMemory()

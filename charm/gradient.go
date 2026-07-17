@@ -54,6 +54,25 @@ var (
 // style — 552 bytes of it — for every cell of every row on every frame.
 const gradientSteps = 64
 
+// barPaint is one bar's worth of pre-rendered cells, for one background.
+//
+// There are two of them because the bar has to be drawn on two backgrounds: the
+// terminal's own, and the cursor row's panel. Painting the cursor row's bar in
+// the row's own foreground — which is what happens if it is simply included in
+// the text — turns a gradient into a solid white smear; leaving it on the
+// terminal background instead punches a strip of the terminal through the middle
+// of what is supposed to be one block.
+//
+// Both are built once, at model construction. Building a Lipgloss style per cell
+// per row per frame cost 4.1 ms against 0.28 ms for a ramp, and the whole reason
+// this type exists is not to do that.
+type barPaint struct {
+	// ramp holds the filled cell pre-rendered at each step of the gradient.
+	ramp  []string
+	solid lipgloss.Style
+	track lipgloss.Style
+}
+
 // barRenderer draws one usage bar. It is built once, at model construction, so
 // the colour profile is probed once rather than once per frame.
 type barRenderer struct {
@@ -63,11 +82,10 @@ type barRenderer struct {
 	// Gradient endpoints, kept as colorful.Color so they can be blended.
 	from, to colorful.Color
 
-	// ramp holds the filled cell pre-rendered at each step of the gradient.
-	ramp []string
-
-	solid lipgloss.Style
-	track lipgloss.Style
+	// field is the bar on the terminal's own background; panel is the same bar on
+	// the cursor row.
+	field barPaint
+	panel barPaint
 }
 
 func newBarRenderer(t *theme.Theme, useColors, noUnicode bool) barRenderer {
@@ -84,21 +102,40 @@ func newBarRenderer(t *theme.Theme, useColors, noUnicode bool) barRenderer {
 
 	b.from = mustColor(string(t.BarFrom))
 	b.to = mustColor(string(t.BarTo))
-	// Below truecolor the bar is a solid fill of the gradient's own starting
-	// colour, so the two paths are recognisably the same element.
-	b.solid = lipgloss.NewStyle().Foreground(lg(t.BarFrom))
-	b.track = lipgloss.NewStyle().Foreground(lg(t.BarTrack))
 
 	b.mode = barSolid
 	if lipgloss.ColorProfile() == termenv.TrueColor {
 		b.mode = barGradient
-		b.ramp = make([]string, gradientSteps)
-		for i := range b.ramp {
-			style := b.cellStyle(i, gradientSteps)
-			b.ramp[i] = style.Render(b.chars.full)
-		}
 	}
+
+	b.field = b.paintFor(t, nil)
+	b.panel = b.paintFor(t, lg(t.Panel))
 	return b
+}
+
+// paintFor builds the cells for one background. bg nil means the terminal's own.
+func (b *barRenderer) paintFor(t *theme.Theme, bg lipgloss.TerminalColor) barPaint {
+	on := func(s lipgloss.Style) lipgloss.Style {
+		if bg == nil {
+			return s
+		}
+		return s.Background(bg)
+	}
+
+	// Below truecolor the bar is a solid fill of the gradient's own starting
+	// colour, so the two paths are recognisably the same element.
+	p := barPaint{
+		solid: on(lipgloss.NewStyle().Foreground(lg(t.BarFrom))),
+		track: on(lipgloss.NewStyle().Foreground(lg(t.BarTrack))),
+	}
+	if b.mode != barGradient {
+		return p
+	}
+	p.ramp = make([]string, gradientSteps)
+	for i := range p.ramp {
+		p.ramp[i] = on(b.cellStyle(i, gradientSteps)).Render(b.chars.full)
+	}
+	return p
 }
 
 // mustColor parses a token from the palette. The palette is ours, not the user's
@@ -113,9 +150,20 @@ func mustColor(hex string) colorful.Color {
 	return c
 }
 
-// render returns a bar of exactly width cells, of which frac (0..1) are filled.
-// It is safe for any width and any frac, including nonsense ones.
+// render returns a bar of exactly width cells, of which frac (0..1) are filled,
+// drawn on the terminal's own background. It is safe for any width and any frac,
+// including nonsense ones.
 func (b *barRenderer) render(frac float64, width int) string {
+	return b.renderOn(&b.field, frac, width)
+}
+
+// renderSelected is the same bar on the cursor row, carrying that row's
+// background so the row stays one block.
+func (b *barRenderer) renderSelected(frac float64, width int) string {
+	return b.renderOn(&b.panel, frac, width)
+}
+
+func (b *barRenderer) renderOn(p *barPaint, frac float64, width int) string {
 	if width < 1 {
 		return ""
 	}
@@ -127,14 +175,14 @@ func (b *barRenderer) render(frac float64, width int) string {
 		return strings.Repeat(b.chars.full, filled) + strings.Repeat(b.chars.empty, empty)
 
 	case barSolid:
-		return b.paint(&b.solid, b.chars.full, filled) + b.paint(&b.track, b.chars.empty, empty)
+		return b.paint(&p.solid, b.chars.full, filled) + b.paint(&p.track, b.chars.empty, empty)
 
 	case barGradient:
 		var sb strings.Builder
 		for i := range filled {
-			sb.WriteString(b.ramp[rampIndex(i, filled)])
+			sb.WriteString(p.ramp[rampIndex(i, filled)])
 		}
-		sb.WriteString(b.paint(&b.track, b.chars.empty, empty))
+		sb.WriteString(b.paint(&p.track, b.chars.empty, empty))
 		return sb.String()
 	}
 	return ""

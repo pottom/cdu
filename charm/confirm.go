@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/pottom/cdu/internal/common"
 	"github.com/pottom/cdu/internal/trash"
 	"github.com/pottom/cdu/pkg/fs"
 )
@@ -210,13 +209,11 @@ func (m *model) rescan() tea.Cmd {
 		return nil
 	}
 
-	m.scr = screenScanning
-	m.progress = common.CurrentProgress{}
 	m.rows = nil
 	m.currentDir = nil
 	m.cursor, m.offset = 0, 0
 
-	return tea.Batch(m.spinner.Tick, scanCmd(m.ui), tickCmd())
+	return m.startScan()
 }
 
 func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

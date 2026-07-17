@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -213,5 +214,97 @@ func TestDiskColumnsAreGivenUpInOrder(t *testing.T) {
 	m.width = 40
 	narrow := m.viewDiskRow(m.disks[0], false)
 	assert.NotContains(t, narrow, "/Volumes/Backup", "a narrow one drops it")
-	assert.Contains(t, narrow, "disk4s2", "but never the device name")
+	assert.Contains(t, narrow, "4s2", "but never the tail of the device name — see below")
+}
+
+// A device name is identified by its end. Cutting from the left, /dev/disk4s1
+// and /dev/disk4s2 both come out as "/dev/disk4…" — one string for two disks, in
+// the column you are choosing between them by.
+func TestANarrowDeviceNameKeepsItsTail(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+	m := disksModel(t, &listGetter{devices: device.Devices{
+		{Name: "/dev/disk4s1", MountPoint: "/a", Size: 1 << 40, Free: 1 << 39},
+		{Name: "/dev/disk4s2", MountPoint: "/b", Size: 1 << 40, Free: 1 << 39},
+	}})
+	m.applyDisks(disksCmd(m.ui)().(disksMsg))
+
+	for _, width := range []int{30, 40, 50, 60} {
+		m.width = width
+		first := m.viewDiskRow(m.disks[0], false)
+		second := m.viewDiskRow(m.disks[1], false)
+		assert.NotEqual(t, first, second, "at %d columns two devices render identically", width)
+	}
+}
+
+// The bug that made this screen unusable: diskSizeWidth was 8 and "460.4 GiB" is
+// 9, so padLeft — which pads without clipping — made every row with a real disk
+// in it a column wider than its own budget. That tripped the too-narrow
+// fallback, which paints the row flat, and the usage bar became a white smear.
+// It looked like a colour bug and was arithmetic.
+func TestRowsWithRealSizesAreNotFloored(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+	m := disksModel(t, &listGetter{devices: device.Devices{
+		// The widest formatSize can go: "1023.9 GiB", ten columns.
+		{Name: "/dev/disk3s1s1", Fstype: "apfs", MountPoint: "/", Size: 1023<<30 + 900<<20, Free: 1 << 30},
+	}})
+	m.applyDisks(disksCmd(m.ui)().(disksMsg))
+
+	for _, width := range []int{80, 100, 120, 200} {
+		m.width = width
+		l := m.diskLayout()
+		plain := m.diskRowPlain(m.disks[0], &l)
+		assert.LessOrEqual(t, 1+runewidth.StringWidth(plain), width,
+			"at %d columns the row overflows its own layout by %d",
+			width, 1+runewidth.StringWidth(plain)-width)
+
+		if l.bar {
+			// A bar drawn cell by cell carries many colours. One flat colour across the
+			// whole row is exactly what the bug looked like.
+			row := m.viewDiskRow(m.disks[0], false)
+			assert.Greater(t, strings.Count(row, "\x1b[38;2;"), 4,
+				"at %d columns the bar is not being drawn as a gradient", width)
+		}
+	}
+}
+
+// The cursor row's bar has to stay a gradient and still carry the row's
+// background.
+//
+// Rendering the row whole in the selection's style paints the bar's block
+// characters in the selection's foreground — a gradient becomes a white smear,
+// which is what it was. Leaving the bar on the terminal's own background instead
+// punches a strip of terminal through the middle of the block.
+func TestTheCursorRowsBarKeepsItsGradientAndItsBackground(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+	m := disksModel(t, &listGetter{devices: device.Devices{
+		{Name: "/dev/disk3s1", Fstype: "apfs", MountPoint: "/", Size: 994 << 30, Free: 100 << 30},
+	}})
+	m.applyDisks(disksCmd(m.ui)().(disksMsg))
+	m.width = 120
+
+	row := m.viewDiskRow(m.disks[0], true)
+	require.True(t, m.diskLayout().bar, "this test is pointless without a bar")
+
+	assert.Greater(t, strings.Count(row, "\x1b[38;2;"), 4,
+		"the cursor row's bar is one flat colour, not a gradient")
+
+	// #241c34, the charm theme's panel: the bar's cells must carry it too, or the
+	// selection is a block with a hole in it.
+	assert.Contains(t, row, "48;2;36;28;52", "the bar does not carry the row's background")
+
+	assert.Equal(t, 120, lipgloss.Width(row), "and it still measures exactly the terminal")
+}
+
+// The fstype answers "what is this thing" — apfs, tmpfs, autofs — and none of
+// the other columns do.
+func TestTheFilesystemTypeIsShown(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+	m := disksModel(t, &listGetter{devices: device.Devices{
+		{Name: "/dev/disk3s1", Fstype: "apfs", MountPoint: "/", Size: 1 << 40, Free: 1 << 39},
+	}})
+	m.applyDisks(disksCmd(m.ui)().(disksMsg))
+
+	m.width = 120
+	assert.Contains(t, m.viewDiskRow(m.disks[0], false), "apfs")
+	assert.Contains(t, m.viewDisksHeader(), "Type")
 }
