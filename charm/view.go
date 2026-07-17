@@ -72,8 +72,20 @@ func (m *model) headerHeight() int {
 // showDiskLine gates the header's second line. It is the first thing the header
 // gives up: it is the least essential row on screen, and it costs a line of the
 // list on every terminal.
+// showDiskLine reports whether the header carries the volume gauge.
+//
+// The gauge describes the scan — "the disk this tree lives on, and how full it
+// is". The device list is not a scan, so on that screen there is nothing for it
+// to describe, and the last device analyzed is simply stale: it would sit above
+// a table that already has every device's usage in it, claiming to be about one
+// of them.
+//
+// It is a rule about what the line means rather than a matter of clearing m.dev
+// on the way out, because a rule cannot be forgotten by whatever else learns to
+// reach this screen.
 func (m *model) showDiskLine() bool {
-	return m.dev != nil &&
+	return m.scr != screenDisks &&
+		m.dev != nil &&
 		m.dev.Size > 0 &&
 		m.width >= minWidthForDiskLine &&
 		m.height >= minHeightForDiskLine

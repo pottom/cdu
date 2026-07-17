@@ -295,6 +295,39 @@ func TestTheCursorRowsBarKeepsItsGradientAndItsBackground(t *testing.T) {
 	assert.Equal(t, 120, lipgloss.Width(row), "and it still measures exactly the terminal")
 }
 
+// The header's volume gauge describes the scan. The device list is not a scan,
+// so the gauge has nothing to describe there — and the device you last looked at
+// would sit above a table that already has every device's usage in it, claiming
+// to be about one of them.
+//
+// It comes up right on a fresh -d, because nothing has been analyzed yet. The
+// bug was on the way *back*: m.dev survives the return, so the gauge stayed.
+func TestTheDiskScreenHasNoVolumeGauge(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+	m := disksModel(t, &listGetter{devices: testDevices()})
+	m.applyDisks(disksCmd(m.ui)().(disksMsg))
+
+	assert.False(t, m.showDiskLine(), "nothing has been analyzed yet")
+	assert.Equal(t, 2, m.headerHeight(), "brand and rule, no gauge")
+
+	// Analyze a device: now there is a scan, and the gauge describes it.
+	next, _ := m.Update(key("enter"))
+	m = next.(*model)
+	scanned := benchModel(3)
+	m.topDir, m.currentDir, m.rows = scanned.topDir, scanned.currentDir, scanned.rows
+	m.scr = screenBrowse
+	require.NotNil(t, m.dev)
+	assert.True(t, m.showDiskLine(), "a scan has a volume to report")
+	assert.Equal(t, 3, m.headerHeight())
+
+	// And back to the list, where it must go again.
+	m = press(t, m, "left")
+	require.Equal(t, screenDisks, m.scr)
+	assert.False(t, m.showDiskLine(), "the gauge must not survive the return to the list")
+	assert.Equal(t, 2, m.headerHeight())
+	assert.NotContains(t, m.View(), "Macintosh", "no stale device in the header")
+}
+
 // The fstype answers "what is this thing" — apfs, tmpfs, autofs — and none of
 // the other columns do.
 func TestTheFilesystemTypeIsShown(t *testing.T) {
