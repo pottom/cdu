@@ -154,6 +154,8 @@ func (m *model) View() string {
 		return m.viewViewer()
 	case screenDisks:
 		return m.viewDisks()
+	case screenTop:
+		return m.viewTop()
 	}
 	return ""
 }
@@ -369,6 +371,9 @@ func (m *model) viewBrand() string {
 func (m *model) headerPath() string {
 	if m.scr == screenDisks {
 		return "select a device to analyze"
+	}
+	if m.scr == screenTop {
+		return fmt.Sprintf("largest %d files, any depth", len(m.topFiles))
 	}
 	if m.scr == screenScanning {
 		// -d comes up on this screen while the mount table is being read, and has no
@@ -693,6 +698,15 @@ var (
 		{key: "r", label: "reread", drop: 3},
 		{key: "q", label: "quit"},
 	}
+	topKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "↵", label: "reveal"},
+		{key: "v", label: "view", drop: 3},
+		{key: "d", label: "trash", drop: 1},
+		{key: "D", label: "delete", drop: 2},
+		{key: "esc", label: "back"},
+		{key: "q", label: "quit", drop: 4},
+	}
 	confirmKeys = []keyHint{
 		{key: "←→", label: "choose"},
 		{key: "enter", label: "confirm"},
@@ -758,6 +772,8 @@ func (m *model) viewFooter() string {
 		keys = scanKeys
 	case m.scr == screenDisks:
 		keys = diskKeys
+	case m.scr == screenTop:
+		keys = topKeys
 	case m.scr == screenConfirm:
 		keys = confirmKeys
 	case m.sortPending:

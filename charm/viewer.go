@@ -47,10 +47,14 @@ type fileLoadedMsg struct {
 
 // openViewer starts reading the selected file, or explains why it will not.
 func (m *model) openViewer() (tea.Model, tea.Cmd) {
-	item := m.selected()
+	// target rather than selected: v works from the largest-files list too, where
+	// the row under the cursor is not a row of the browser's list.
+	item, _ := m.target()
 	if item == nil {
 		return m, nil
 	}
+	// Where closing the viewer goes back to.
+	m.viewerFrom = m.scr
 	if m.ui.noViewFile {
 		// Disabled, but not silent: a key that does nothing reads as broken.
 		m.status, m.statusIsError = "viewing files is disabled (--no-view-file)", true
@@ -140,9 +144,10 @@ func (m *model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case keyEscape, "q", keyBackspace, keyLeft, "h":
-		// Close returns to the list; unlike q on the browse screen, it does not quit.
+		// Close returns to the list it was opened from; unlike q on the browse
+		// screen, it does not quit.
 		m.viewer = nil
-		m.scr = screenBrowse
+		m.scr = m.viewerFrom
 		return m, nil
 	case "up", "k":
 		v.offset--

@@ -69,10 +69,27 @@ type undoDoneMsg struct {
 	err    error
 }
 
+// target is the item a destructive key acts on, and the directory it lives in.
+//
+// The browser's answer is the row under the cursor and the directory being
+// shown. The largest-files list has the same rows and no directory being shown,
+// so it asks the item where it lives — which is exactly the question that list
+// exists to answer.
+func (m *model) target() (item, parent fs.Item) {
+	if m.scr == screenTop {
+		it := m.selectedTop()
+		if it == nil {
+			return nil, nil
+		}
+		return it, it.GetParent()
+	}
+	return m.selected(), m.currentDir
+}
+
 // askConfirm opens the modal for the selected item, or explains why it will not.
 func (m *model) askConfirm(act action) {
-	item := m.selected()
-	if item == nil {
+	item, parent := m.target()
+	if item == nil || parent == nil {
 		return
 	}
 
@@ -97,9 +114,12 @@ func (m *model) askConfirm(act action) {
 		return
 	}
 
+	// Where to go back to when the modal closes. A confirm opened from the
+	// largest-files list must return there, not drop you into the browser.
+	m.confirmFrom = m.scr
 	m.confirm = &confirmState{
 		item:          item,
-		parent:        m.currentDir,
+		parent:        parent,
 		act:           act,
 		requireTyping: isProtected(item.GetPath()),
 	}
@@ -242,7 +262,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if c.requireTyping && !c.typedFully() {
 			return m, nil
 		}
-		m.scr = screenBrowse
+		m.scr = m.confirmFrom
 		m.confirm = nil
 		m.pending = c.item
 		m.status, m.statusIsError = c.inProgressLabel(), false
@@ -269,7 +289,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) cancelConfirm() {
 	m.confirm = nil
-	m.scr = screenBrowse
+	m.scr = m.confirmFrom
 }
 
 func (c *confirmState) typedFully() bool { return c.typed == confirmWord }
@@ -290,6 +310,7 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 		// way up the tree, which is why the tree half is not reimplemented here.
 		msg.parent.RemoveFile(msg.item)
 		m.dropRow(msg.item)
+		m.dropTopFile(msg.item)
 	case actionEmpty:
 		msg.parent.RemoveFile(msg.item)
 		msg.parent.AddFile(emptiedFile(msg.item, msg.parent))

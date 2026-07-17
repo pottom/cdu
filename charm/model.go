@@ -22,6 +22,7 @@ const (
 	screenConfirm
 	screenViewer
 	screenDisks
+	screenTop
 	screenError
 )
 
@@ -108,6 +109,10 @@ type model struct {
 
 	// confirm is the pending destructive operation, nil when there is none.
 	confirm *confirmState
+	// confirmFrom is the screen the modal was opened from, and the screen closing
+	// it returns to. A delete asked for in the largest-files list must not drop
+	// you into the browser when you cancel it.
+	confirmFrom screen
 
 	// lastTrashed is what undo would put back. Only a trashed item can come back,
 	// so a permanent delete leaves this nil — there is simply nothing to restore.
@@ -138,6 +143,8 @@ type model struct {
 	// viewer holds the file being read with v: its lines, the scroll offset, and
 	// whether the read was capped. Nil when not viewing.
 	viewer *viewerState
+	// viewerFrom is the screen v was pressed on, and the one closing returns to.
+	viewerFrom screen
 
 	// disks is the mount table, when cdu was started with -d. It is kept for the
 	// life of the program rather than re-read: it is the scan's parent, and back
@@ -155,6 +162,13 @@ type model struct {
 	// It cannot stop at once — what is already open still has to finish — so the
 	// screen says so, and the tree that eventually arrives is thrown away.
 	cancelling bool
+
+	// topFiles is the biggest files anywhere in the scan (T). It is a snapshot,
+	// taken when the key is pressed rather than kept up to date: it is a question
+	// you ask, not a view that has to stay true.
+	topFiles  fs.Files
+	topCursor int
+	topOffset int
 }
 
 type (
@@ -181,6 +195,13 @@ func newModel(ui *UI) *model {
 		st:      st,
 		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
+		// Where the modal and the viewer return to when they close. They are set
+		// again on the way in, but the zero value of a screen is screenScanning —
+		// so anything that missed a step would close onto the scan screen, which is
+		// not a place you can be. The browser is the answer to "back" for everything
+		// that does not say otherwise.
+		confirmFrom: screenBrowse,
+		viewerFrom:  screenBrowse,
 		// Anything worth saying about the theme or the config is said here rather
 		// than on stderr, which the alternate screen would wipe before it could be
 		// read.
@@ -408,6 +429,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.scr == screenDisks {
 		return m.handleDisksKey(msg)
 	}
+	if m.scr == screenTop {
+		return m.handleTopKey(msg)
+	}
 	if m.scr != screenBrowse {
 		return m, nil
 	}
@@ -447,6 +471,8 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		cmd := m.askUndo()
 		return m, cmd
+	case "T":
+		return m.collectTopFiles()
 	case "r":
 		cmd := m.rescan()
 		return m, cmd
