@@ -22,6 +22,10 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `filter.go`, `fuzzy.go` — the `/` fuzzy filter and its match highlighting.
 - `viewer.go` — the `v` file pager, with the binary sniff and the read cap.
 - `mouse.go` — wheel-scroll and click-to-select, behind `--mouse`.
+- `disks.go`, `diskgroup.go` — `cdu -d`: the device table, grouped by disk.
+- `topfiles.go` — `T`: the largest files anywhere in the scan.
+- `help.go` — `?`: every key on one screen.
+- `cancel.go` — `esc` during a scan.
 - `icons.go` — the icon cell: markers by default, Nerd Font glyphs behind `--icons`.
 - `icons_table.go` — **generated** from exa's `icons.rs`; do not hand-edit.
 - `style.go` — the palette and the resolved Lipgloss styles.
@@ -214,6 +218,40 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   a click on the already-selected row opens it (there is no terminal double-click).
   No drag or hover — those cost the user their terminal's own text selection.
 
+### The other screens
+
+- **The device list is grouped by physical disk, and the grouping is a spelled-out
+  heuristic.** A flat table lied: six APFS volumes of one container each report
+  the container's space, so it read as six half-terabyte disks. A header says "4
+  volumes sharing one pool of space" — inferred from every device reporting the
+  same total *and* free to the byte, because nothing in the mount table says it.
+  `diskPatterns` lists each device-name form rather than inferring: "strip the
+  trailing digits" turns `nvme0n1` into `nvme0n` and files `loop0` with `loop1`,
+  and a wrong tree is invisible. `/dev/mapper` is left ungrouped — an LVM volume
+  can span disks, which is the point of LVM.
+- **Disk headers are not selectable.** A container has no mount point, so enter on
+  one would do nothing, and a cursor you can park somewhere inert reads as broken.
+- **The largest-files collect runs on the render loop**, which is the one
+  deliberate exception to the tea.Cmd rule — and it is measured, not assumed: 3 ms
+  at 12k items, 23 ms at 294k, 161 ms at 2.7M. The rule is about I/O that can hang
+  without bound. Off-loop it would be a data race: `CollectTopFiles` reads the tree
+  through `GetFiles`, which takes no lock (the engine ships `GetFilesLocked` for
+  exactly this), and the render loop is the only thread allowed to mutate it.
+- **The destructive keys ask `target()`, not the browser.** The largest-files list
+  has no "current directory", so the item is asked where it lives. Any new screen
+  with rows belongs in `target`.
+- **The modal, the viewer and the help return to where they were opened from**, and
+  those fields default to `screenBrowse` — the zero value of a `screen` is
+  `screenScanning`, and closing onto the scan screen is not a place you can be.
+- **`T` is not `--top`.** That flag forces gdu's non-interactive mode, whose output
+  is byte-for-byte gdu's. The flag keeps its meaning; the screen has a key.
+- **The help describes cdu's bindings, not the mock's.** `cdu-4-help.html` predates
+  most of them and contradicts itself — it gives `d` as both "delete selected" and
+  "list mounted disks", and `-d` is a flag. `TestHelpCoversEveryFooterKey` is the
+  seam between the two places that describe keys: it cannot check the words are
+  still true, but a key can never be silently undocumented. It caught one within a
+  minute of being written.
+
 ### Colour and unicode
 
 - **`--no-color` drops colour, not attributes.** Bold, reverse and underline are the
@@ -253,16 +291,17 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 
 ## Work Guidance
 
-Not yet implemented, and each pointing at `--classic` with an explicit error
-rather than failing silently: `ListDevices` (`-d`), `ReadFromStorage`
-(`--read-from-storage`). The disks/top-files/help screens land in later slices. The
-footer advertises only bindings that exist — do not list a key before it works, and
-`u` appears only when there is something to undo.
+Still pointing at `--classic` with an explicit error rather than failing
+silently: `ReadFromStorage` (`--read-from-storage`). The footer advertises only
+bindings that exist — do not list a key before it works, and `u` appears only when
+there is something to undo.
 
 Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
 menu, `t` column menu (or direct `a`/`B`/`c`/`m`; `t` then `s` saves the view),
 `v` view file, `d` trash, `D` delete permanently, `e` empty a file, `u` undo the
-last trash, `r` rescan.
+last trash, `r` rescan, `T` largest files, `?` help, `esc` back / cancel a scan.
+**`help.go` is the list that has to be right** — add a binding there, or the
+drift test fails.
 
 Flags this package reads: `--no-delete`, `--no-view-file`, `--mouse`, `--icons`,
 `--no-unicode`, `--no-color`, `--theme`, and the `theme:`/`sorting:` config

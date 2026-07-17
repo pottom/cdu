@@ -23,6 +23,7 @@ const (
 	screenViewer
 	screenDisks
 	screenTop
+	screenHelp
 	screenError
 )
 
@@ -169,6 +170,11 @@ type model struct {
 	topFiles  fs.Files
 	topCursor int
 	topOffset int
+
+	// helpFrom is the screen ? was pressed on, and the one it returns to. The
+	// help is reachable from all of them.
+	helpFrom   screen
+	helpOffset int
 }
 
 type (
@@ -419,6 +425,15 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if m.scr == screenScanning {
 		return m.handleScanningKey(msg)
+	}
+	if m.scr == screenHelp {
+		return m.handleHelpKey(msg)
+	}
+	// ? reaches the help from anywhere it is not already a letter being typed —
+	// the modal, the filter and the menus are all handled above, and each of them
+	// takes every key whole.
+	if msg.String() == "?" {
+		return m.openHelp()
 	}
 
 	switch msg.String() {
