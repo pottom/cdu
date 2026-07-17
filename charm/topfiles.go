@@ -45,12 +45,13 @@ const (
 // exactly this reason — while the render loop is the one thread allowed to mutate
 // that tree, in applyDelete. Off-loop, a delete landing mid-walk is a data race.
 func (m *model) collectTopFiles() (tea.Model, tea.Cmd) {
-	if m.topDir == nil {
+	root := m.searchRoot()
+	if root == nil {
 		m.status, m.statusIsError = "nothing scanned yet", true
 		return m, nil
 	}
 
-	m.topFiles = analyze.CollectTopFiles(m.topDir, topFileCount)
+	m.topFiles = analyze.CollectTopFiles(root, topFileCount)
 	m.topCursor, m.topOffset = 0, 0
 	m.status, m.statusIsError = "", false
 	m.scr = screenTop

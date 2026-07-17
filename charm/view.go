@@ -379,7 +379,7 @@ func (m *model) headerPath() string {
 		return "select a device to analyze"
 	}
 	if m.scr == screenTop {
-		return fmt.Sprintf("largest %d files, any depth", len(m.topFiles))
+		return "largest files" + m.searchScopeSuffix()
 	}
 	if m.scr == screenHelp {
 		return "every key, one screen"
@@ -388,7 +388,7 @@ func (m *model) headerPath() string {
 		return "reading files to compare"
 	}
 	if m.scr == screenDup {
-		return "duplicate files"
+		return "duplicate files" + m.searchScopeSuffix()
 	}
 	if m.scr == screenScanning {
 		// -d comes up on this screen while the mount table is being read, and has no

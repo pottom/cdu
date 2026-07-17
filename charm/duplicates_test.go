@@ -289,3 +289,57 @@ func TestDupScreenFitsTheTerminal(t *testing.T) {
 }
 
 var _ = analyze.CreateAnalyzer
+
+// F searches from where you stand, not always the whole scan. Standing in a
+// subdirectory finds only that subtree's duplicates.
+func TestFindDuplicatesSearchesFromTheCurrentDirectory(t *testing.T) {
+	m := dupModel(t, map[string]string{
+		"top-a.bin":      "duplicated at the root level here",
+		"top-b.bin":      "duplicated at the root level here",
+		"sub/deep-a.iso": "duplicated only down inside sub",
+		"sub/deep-b.iso": "duplicated only down inside sub",
+	})
+
+	// From the root, both pairs are found.
+	whole := runSearch(t, m)
+	require.Len(t, whole.dupGroups, 2, "the root sees every duplicate")
+	whole = press(t, whole, "esc")
+
+	// Navigate into sub, then search: only sub's pair.
+	for i, r := range whole.rows {
+		if r.IsDir() && r.GetName() == "sub" {
+			whole.cursor = i
+		}
+	}
+	whole = press(t, whole, "right")
+	require.Equal(t, "sub", whole.currentDir.GetName())
+
+	scoped := runSearch(t, whole)
+	require.Len(t, scoped.dupGroups, 1, "inside sub, only sub's duplicates")
+	assert.Contains(t, scoped.dupGroups[0].Files[0].GetName(), "deep")
+	assert.Contains(t, scoped.headerPath(), "under sub", "the header says which subtree it searched")
+}
+
+// The same for the largest-files screen.
+func TestLargestFilesSearchesFromTheCurrentDirectory(t *testing.T) {
+	m := dupModel(t, map[string]string{
+		"huge.bin":        strings.Repeat("A", 5000),
+		"sub/smaller.bin": strings.Repeat("B", 100),
+	})
+
+	// Into sub, then T: the huge root file is not in scope.
+	for i, r := range m.rows {
+		if r.IsDir() && r.GetName() == "sub" {
+			m.cursor = i
+		}
+	}
+	m = press(t, m, "right")
+	next, _ := m.collectTopFiles()
+	m = next.(*model)
+
+	require.NotEmpty(t, m.topFiles)
+	for _, f := range m.topFiles {
+		assert.NotEqual(t, "huge.bin", f.GetName(), "a file outside the current subtree must not appear")
+	}
+	assert.Contains(t, m.headerPath(), "under sub")
+}

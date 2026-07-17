@@ -593,6 +593,29 @@ func (m *model) enterDir(dir fs.Item) {
 // filter is active, otherwise every row. A filtered slice is non-nil even when it
 // matches nothing, so an over-narrow filter shows an empty list rather than the
 // whole directory.
+// searchRoot is the subtree the whole-tree analyses (T, F) work over: the
+// directory you are standing in, so they act on what you are looking at rather
+// than always the whole scan. At the top of the tree that is the scan root, so
+// nothing changes there. It falls back to the scan root when there is no current
+// directory — a saved scan not yet entered, say.
+func (m *model) searchRoot() fs.Item {
+	if m.currentDir != nil {
+		return m.currentDir
+	}
+	return m.topDir
+}
+
+// searchScopeSuffix names the subtree a T/F result covers, when it is not the
+// whole scan. At the top of the tree it is empty — "largest files" reads as the
+// whole thing, which it is — and inside a directory it says which, so a short
+// list does not read as a bug.
+func (m *model) searchScopeSuffix() string {
+	if m.currentDir == nil || m.currentDir == m.topDir {
+		return ", any depth"
+	}
+	return " under " + m.currentDir.GetName() + ", any depth"
+}
+
 func (m *model) items() []fs.Item {
 	if m.filtered != nil {
 		return m.filtered

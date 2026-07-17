@@ -56,7 +56,8 @@ func dupCmd(root fs.Item, cancel func() bool) tea.Cmd {
 
 // findDuplicates starts the search.
 func (m *model) findDuplicates() (tea.Model, tea.Cmd) {
-	if m.topDir == nil {
+	root := m.searchRoot()
+	if root == nil {
 		m.status, m.statusIsError = "nothing scanned yet", true
 		return m, nil
 	}
@@ -64,7 +65,7 @@ func (m *model) findDuplicates() (tea.Model, tea.Cmd) {
 	m.cancelling = false
 	m.status, m.statusIsError = "", false
 	m.scr = screenHashing
-	return m, tea.Batch(m.spinner.Tick, dupCmd(m.topDir, m.ui.cancel.Load))
+	return m, tea.Batch(m.spinner.Tick, dupCmd(root, m.ui.cancel.Load))
 }
 
 // handleHashingKey mirrors the scan screen: esc cancels, q quits. The search
