@@ -442,7 +442,9 @@ func (m *model) headerPath() string {
 // capacity, not against anything in the tree.
 func (m *model) viewDiskLine() string {
 	used, size := m.dev.GetUsage(), m.dev.Size
-	usage := fmt.Sprintf("%s / %s", m.ui.formatSize(used), m.ui.formatSize(size))
+	// The figures say how much, the percentage says how full — the number you
+	// actually read off a gauge. "627 GiB / 994 GiB · 63%".
+	usage := fmt.Sprintf("%s / %s · %s", m.ui.formatSize(used), m.ui.formatSize(size), formatPct(used, size))
 
 	const gaps = 2 // one space each side of the bar
 	// The name keeps to its own length and the bar takes the rest, so the gauge
