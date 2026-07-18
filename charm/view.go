@@ -48,9 +48,10 @@ const (
 	// somewhere to live. Smaller than this and we clamp rather than crash.
 	minHeightForChrome = 5
 
-	// diskBarWidth is fixed: the disk line reads as a gauge, and a gauge that
-	// changes length with the window is hard to compare against itself.
-	diskBarWidth = 24
+	// minDiskBar is the shortest the header gauge is allowed to be. Above it the
+	// bar takes whatever the line has left after the name and the figures, so on a
+	// wide terminal it fills the header rather than sitting small in a corner.
+	minDiskBar = 16
 
 	minNameWidth = 4
 
@@ -443,13 +444,23 @@ func (m *model) viewDiskLine() string {
 	used, size := m.dev.GetUsage(), m.dev.Size
 	usage := fmt.Sprintf("%s / %s", m.ui.formatSize(used), m.ui.formatSize(size))
 
-	const gaps = 2
-	labelWidth := m.width - diskBarWidth - runewidth.StringWidth(usage) - gaps
-	label := runewidth.Truncate(m.dev.Name, max(labelWidth, 0), "…")
-	label = runewidth.FillRight(label, max(labelWidth, 0))
+	const gaps = 2 // one space each side of the bar
+	// The name keeps to its own length and the bar takes the rest, so the gauge
+	// is long enough to read a level off rather than a stub beside a wide, empty
+	// label — which is what a fixed-width bar left on a roomy terminal.
+	name := m.dev.Name
+	barWidth := m.width - runewidth.StringWidth(name) - runewidth.StringWidth(usage) - gaps
 
-	bar := m.bar.render(fraction(used, size), diskBarWidth)
-	return m.st.dim.Render(label) + " " + bar + " " + m.st.pct.Render(usage)
+	// Too narrow for the whole name and a legible bar: the name gives up its
+	// columns, so the gauge stays readable rather than the label staying whole.
+	if barWidth < minDiskBar {
+		barWidth = min(minDiskBar, max(m.width-runewidth.StringWidth(usage)-gaps, 0))
+		nameW := max(m.width-barWidth-runewidth.StringWidth(usage)-gaps, 0)
+		name = runewidth.FillRight(runewidth.Truncate(name, nameW, "…"), nameW)
+	}
+
+	bar := m.bar.render(fraction(used, size), max(barWidth, 0))
+	return m.st.dim.Render(name) + " " + bar + " " + m.st.pct.Render(usage)
 }
 
 func (m *model) viewList() string {

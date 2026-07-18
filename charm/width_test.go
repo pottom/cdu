@@ -157,3 +157,28 @@ func TestFrameHeight(t *testing.T) {
 		}
 	}
 }
+
+// The header disk gauge takes the room the line has left, so it fills the header
+// on a wide terminal instead of sitting at a fixed stub. Two things it must hold:
+// the line never overflows, and the bar genuinely grows with the terminal.
+func TestDiskGaugeGrowsWithTheTerminal(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+
+	m := benchModel(3)
+	m.haveSize = true
+	m.dev = &device.Device{Name: "Macintosh HD", MountPoint: "/", Size: 994 << 30, Free: 367 << 30}
+
+	barCells := func(w int) int {
+		m.width = w
+		line := m.viewDiskLine()
+		if lipgloss.Width(line) > w {
+			t.Fatalf("disk line is %d columns wide at width %d", lipgloss.Width(line), w)
+		}
+		return strings.Count(line, "█") + strings.Count(line, "░")
+	}
+
+	narrow, wide := barCells(60), barCells(160)
+	assert.Greater(t, wide, narrow, "the gauge must grow with the terminal, not stay fixed")
+	assert.GreaterOrEqual(t, narrow, minDiskBar, "and never shrink below its floor")
+	assert.Greater(t, wide, 80, "on a 160-column terminal the gauge should be long, not a stub")
+}
