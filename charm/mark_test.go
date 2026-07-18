@@ -218,6 +218,38 @@ func TestTheHeaderShowsTheMarkTally(t *testing.T) {
 	assert.Contains(t, m.viewHeader(), "2 items", "and it reaches the header")
 }
 
+// Esc clears the whole selection at once — the unmark-all to space's mark-one — and
+// says it did. It is the browser's answer to a queue built up by mistake.
+func TestEscClearsEveryMark(t *testing.T) {
+	m := benchModel(5)
+	m.marked[m.rows[0]] = true
+	m.marked[m.rows[3]] = true
+
+	m = press(t, m, "esc")
+	assert.Equal(t, 0, m.markedCount(), "esc clears every mark")
+	assert.Equal(t, screenBrowse, m.scr, "and stays on the browser")
+	assert.Contains(t, m.status, "marks cleared")
+}
+
+// A marked row is drawn as a filled band, not just a tick, so it must render
+// differently from the very same row unmarked — the whole point of the change.
+func TestAMarkedRowRendersAsABand(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(original)
+
+	m := benchModel(5)
+	total := m.rowScale()
+	plain := m.viewRow(m.rows[0], false, total)
+
+	m.marked[m.rows[0]] = true
+	banded := m.viewRow(m.rows[0], false, total)
+
+	assert.NotEqual(t, plain, banded, "a marked row must look different from an unmarked one")
+	assert.Contains(t, banded, "48;2", "the band carries a background colour the plain row does not")
+	assert.NotContains(t, plain, "48;2")
+}
+
 // assertErr is a stand-in filesystem error for the partial-failure test.
 var assertErr = &fsError{"permission denied"}
 

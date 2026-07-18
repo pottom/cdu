@@ -66,7 +66,7 @@ var helpGroups = []helpGroup{
 		{"F", "find duplicate files (reads them)"},
 		{"v", "view a file"},
 		{"?", "this screen"},
-		{"esc", "back — and cancel a running scan"},
+		{"esc", "back — cancel a scan, or clear the marks"},
 		{"q", "quit"},
 	}},
 }

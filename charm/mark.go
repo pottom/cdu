@@ -49,6 +49,17 @@ func (m *model) clearMarks() {
 	m.marked = make(map[fs.Item]bool)
 }
 
+// unmarkAll drops the whole selection at once and says it did — the "unmark all"
+// to space's mark-one. Silent when there was nothing marked, so a stray esc on an
+// unmarked list does not flash a message about a set that was never there.
+func (m *model) unmarkAll() {
+	if m.markedCount() == 0 {
+		return
+	}
+	m.clearMarks()
+	m.status, m.statusIsError = "marks cleared", false
+}
+
 func (m *model) markedCount() int { return len(m.marked) }
 
 // isAncestorMarked reports whether a marked directory contains this item. Such an

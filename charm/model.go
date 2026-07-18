@@ -610,6 +610,11 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveCursor(1)
 	case "M":
 		return m.openQueue()
+	case keyEscape:
+		// Nothing is deeper than the browser to back out of, so esc here cancels the
+		// selection instead — the whole marked set at once, the way esc drops any
+		// other pending state. With nothing marked it does nothing, quietly.
+		m.unmarkAll()
 	case "a", "B", "c", "m":
 		// gdu binds these directly, and so do we: the t menu exists to make them
 		// discoverable, not to make them harder to reach for anyone who knows them.

@@ -536,11 +536,14 @@ func (m *model) viewBar(item fs.Item, selected bool, total int64) string {
 	width := max(m.width-indent, 0)
 	bar := m.bar.render(fraction(m.itemSize(item), total), width)
 
-	// The gutter marker is repeated on the bar line so the selection reads as one
-	// block two lines tall rather than two unrelated things.
+	// The gutter marker is repeated on the bar line so the selection — or a mark —
+	// reads as one block two lines tall rather than two unrelated things.
 	gutter := " "
-	if selected {
+	switch {
+	case selected:
 		gutter = m.st.accent.Render("▌")
+	case m.isMarked(item):
+		gutter = m.st.marked.Render(m.markGlyph())
 	}
 	return gutter + strings.Repeat(" ", indent-1) + bar
 }
@@ -622,6 +625,12 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored, m.isMarked(item))
 	}
 
+	// A marked row that is not the cursor is drawn as a filled band, so a queue
+	// building up is read at a glance and not from one small tick per row.
+	if m.isMarked(item) {
+		return m.viewMarkedRow(plain, floored)
+	}
+
 	// Floored: the terminal is narrower than the columns' own minimums add up to,
 	// so the row cannot be composed to fit. Clip it whole, exactly as the selected
 	// row already does — otherwise it overflows, the terminal soft-wraps it, and
@@ -655,21 +664,28 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		renderedName = highlightMatch(nameText, m.filter, &nameStyle, &m.st.accent)
 	}
 
-	return m.rowGutter(item) + iconStyle.Render(icon) +
+	return " " + iconStyle.Render(icon) +
 		m.st.size.Render(sizeText) + " " +
 		m.st.dim.Render(extras) +
 		renderedName +
 		m.st.pct.Render(pctText)
 }
 
-// rowGutter is the one-cell head of a row: a tick when the row is queued for a
-// batch delete, otherwise blank. It is always one cell, so a marked row still lines
-// up with an unmarked one — the same reason the selection marker shares the column.
-func (m *model) rowGutter(item fs.Item) string {
-	if m.isMarked(item) {
-		return m.st.accent.Render(m.markGlyph())
+// viewMarkedRow draws a marked, non-cursor row as one filled band a cell wider than
+// the tick alone: the tick in the gutter, then the row painted whole in the marked
+// style. It mirrors viewSelectedRow, minus the filter highlight — a band that stands
+// out is the point, not lighting matched runes within it.
+func (m *model) viewMarkedRow(plain string, floored bool) string {
+	if m.width < 1 {
+		return ""
 	}
-	return " "
+	if m.width < 2 {
+		return m.st.marked.Render(m.markGlyph())
+	}
+	if floored {
+		return m.st.marked.Render(clipTo(m.markGlyph()+plain, m.width))
+	}
+	return m.st.marked.Render(m.markGlyph()) + m.st.marked.MaxWidth(max(m.width-1, 1)).Render(plain)
 }
 
 // viewSelectedRow draws the cursor row. No box-shadow in a terminal: the mock's
@@ -776,6 +792,9 @@ var (
 	// a step up from ? — so a narrow footer keeps the delete key over the mark hint.
 	markKey  = keyHint{key: "space", label: "mark", drop: 3}
 	queueKey = keyHint{key: "M", label: "queue", drop: 4}
+	// clearKey is the "unmark all" to space's mark-one. It shows only with a
+	// selection to clear, and sheds early — it is a convenience, not a way out.
+	clearKey = keyHint{key: "esc", label: "clear", drop: 4}
 	// The whole footer becomes the menu: while a mode is on, nothing else is worth
 	// saying, and a mode nobody can see is a trap.
 	sortMenuKeys = []keyHint{
@@ -912,7 +931,7 @@ func (m *model) browseFooterKeys() []keyHint {
 		}
 		keys = append(keys, markKey)
 		if m.markedCount() > 0 {
-			keys = append(keys, queueKey)
+			keys = append(keys, queueKey, clearKey)
 		}
 		if len(m.lastTrashed) > 0 {
 			keys = append(keys, undoKey)
