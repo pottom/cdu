@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-runewidth"
 
+	"github.com/pottom/cdu/internal/elevate"
 	"github.com/pottom/cdu/internal/trash"
 	"github.com/pottom/cdu/pkg/fs"
 )
@@ -38,12 +39,14 @@ type confirmState struct {
 	batch  []fs.Item
 	act    action
 
-	// elevated means this modal is the second offer, after an ordinary delete was
-	// refused for lack of permission: confirming it removes the item with sudo,
-	// permanently. It always requires typing — it is destructive and usually a system
-	// path — and it never trashes, because the trash is per-user and a root file has
-	// no business in it.
-	elevated bool
+	// elevated means this modal is the second offer, after a delete was refused for
+	// lack of permission: confirming it removes elevateItems with sudo, permanently.
+	// It always requires typing — it is destructive and usually a system path — and it
+	// never trashes, because the trash is per-user and a root file has no business in
+	// it. elevateItems is the set to remove (one item, or a batch's permission
+	// failures collected together).
+	elevated     bool
+	elevateItems []fs.Item
 
 	// confirmFocused is false on entry: the destructive button is never what a
 	// reflexive Enter lands on.
@@ -363,9 +366,9 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.scr = m.confirmFrom
 		if c.elevated {
-			item, parent := c.item, c.parent
+			items := c.elevateItems
 			m.confirm = nil
-			cmd := m.runElevatedDelete(item, parent)
+			cmd := m.runElevatedDelete(items)
 			return m, cmd
 		}
 		act, batch := c.act, c.batch
@@ -416,6 +419,7 @@ func (m *model) startBatchDelete(items []fs.Item, act action) tea.Cmd {
 	m.deleteRemaining = items[1:]
 	m.batchTotal = len(items)
 	m.batchFail = 0
+	m.elevateCandidates = nil
 	m.pending = items[0]
 	m.clearMarks()
 	m.status, m.statusIsError = fmt.Sprintf("%s %d items…", actionGerund(act), len(items)), false
@@ -430,18 +434,22 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 
 	if msg.err != nil {
 		m.batchFail++
-		if !batch {
+		switch {
+		case !batch && os.IsPermission(msg.err):
+			// A single delete refused for want of permission is worth offering a way
+			// past: the item needs root, so offer to remove it with elevated privileges
+			// rather than only reporting the wall.
 			m.pending = nil
-			// A single delete refused for lack of permission is the one failure worth
-			// offering a way past: the item needs root, so offer to remove it with
-			// elevated privileges rather than just reporting the wall. (A batch reports
-			// its failures in the summary; elevating mid-run, item by item, is not worth
-			// the tangle.)
-			if os.IsPermission(msg.err) {
-				return m.offerElevation(msg.item, msg.parent)
-			}
+			return m.offerElevation([]fs.Item{msg.item})
+		case !batch:
+			m.pending = nil
 			m.status, m.statusIsError = deleteErrorText(msg), true
 			return nil
+		case os.IsPermission(msg.err):
+			// A batch collects what it could not remove for want of permission and,
+			// once the run is done, offers the whole lot to one sudo — a marked set of
+			// root-owned files then costs a single prompt rather than one each.
+			m.elevateCandidates = append(m.elevateCandidates, msg.item)
 		}
 	} else {
 		switch msg.act {
@@ -476,6 +484,16 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 
 	m.pending = nil
 	if batch {
+		// What the batch could not remove for lack of permission is offered to one
+		// elevated pass, so a marked set of root-owned files can still go. (Only when
+		// elevation is possible here; otherwise it falls through to the summary, which
+		// counts them among the failures.)
+		if len(m.elevateCandidates) > 0 && elevate.Available() {
+			items := m.elevateCandidates
+			m.elevateCandidates = nil
+			m.batchTotal, m.batchFail = 0, 0
+			return m.offerElevation(items)
+		}
 		m.status, m.statusIsError = m.batchDoneLabel()
 		m.batchTotal, m.batchFail = 0, 0
 		// A batch run from the queue screen leaves it stale — its items are gone — so
@@ -652,9 +670,9 @@ func (m *model) viewModal() string {
 	}
 	// A single item shows its full path; a batch spans directories and has none to
 	// show, so its subject line already carries the count and size instead.
-	if len(c.batch) == 0 {
+	if it := modalPathItem(c); it != nil {
 		lines = append(lines,
-			modalLine{text: m.st.dim.Render(middleTruncate(c.item.GetPath(), width)), dropAt: 2})
+			modalLine{text: m.st.dim.Render(middleTruncate(it.GetPath(), width)), dropAt: 2})
 	}
 	consequence := modalConsequence(c.act)
 	if c.elevated {
@@ -681,6 +699,9 @@ func (m *model) viewModal() string {
 
 func modalTitle(c *confirmState) string {
 	if c.elevated {
+		if n := len(c.elevateItems); n > 1 {
+			return fmt.Sprintf("Remove %d %s with elevated privileges?", n, itemNoun(n))
+		}
 		return "Remove this with elevated privileges?"
 	}
 	if len(c.batch) > 0 {
@@ -712,13 +733,41 @@ func modalTitle(c *confirmState) string {
 // have expected. A batch is summed instead: how many folders and files, and the
 // total that would come back.
 func (m *model) modalSubject(c *confirmState) string {
+	if c.elevated {
+		if len(c.elevateItems) == 1 {
+			return m.itemSubject(c.elevateItems[0])
+		}
+		return m.batchSubject(c.elevateItems)
+	}
 	if len(c.batch) > 0 {
 		return m.batchSubject(c.batch)
 	}
-	name := c.item.GetName()
-	size := m.ui.formatSize(m.itemSize(c.item))
-	if c.item.IsDir() {
-		return fmt.Sprintf("%s/  —  %s, %s items", name, size, humanCount(c.item.GetItemCount()))
+	return m.itemSubject(c.item)
+}
+
+// modalPathItem is the single item whose full path the modal shows, or nil when the
+// modal is about a set — a batch, or an elevated set of more than one — which has no
+// one path to name.
+func modalPathItem(c *confirmState) fs.Item {
+	if c.elevated {
+		if len(c.elevateItems) == 1 {
+			return c.elevateItems[0]
+		}
+		return nil
+	}
+	if len(c.batch) > 0 {
+		return nil
+	}
+	return c.item
+}
+
+// itemSubject names one thing and its size, and for a directory the item count that
+// goes with it — the number people most often turn out not to have expected.
+func (m *model) itemSubject(item fs.Item) string {
+	name := item.GetName()
+	size := m.ui.formatSize(m.itemSize(item))
+	if item.IsDir() {
+		return fmt.Sprintf("%s/  —  %s, %s items", name, size, humanCount(item.GetItemCount()))
 	}
 	return fmt.Sprintf("%s  —  %s", name, size)
 }

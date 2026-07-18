@@ -16,7 +16,7 @@ func Cached() bool { return false }
 
 // RemoveCmd is never called on Windows, because Available is false; it returns nil
 // so a caller that ignored that would fail loudly rather than run something wrong.
-func RemoveCmd(_, _ string) *exec.Cmd { return nil }
+func RemoveCmd(_ []string, _ string) *exec.Cmd { return nil }
 
 // Reason is what to tell the user instead: elevation here means relaunching the
 // whole program as administrator, which cdu cannot do to itself mid-run.
