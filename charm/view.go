@@ -925,6 +925,12 @@ func hintsWidth(keys []keyHint) int {
 func (m *model) browseFooterKeys() []keyHint {
 	keys := make([]keyHint, 0, len(browseKeys)+3)
 	for _, k := range browseKeys {
+		// At the scan root, ← does not go back within the tree — there is nowhere back
+		// to go — it scans the parent on disk. The hint says "up" so that is not a
+		// surprise.
+		if k.key == "←" && m.canAscendOnDisk() {
+			k.label = "up"
+		}
 		keys = append(keys, k)
 		if k.key != "d" {
 			continue
