@@ -489,6 +489,10 @@ func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case undoDoneMsg:
 		cmd := m.applyUndo(msg)
 		return m, cmd
+
+	case openedMsg:
+		m.applyOpened(msg)
+		return m, nil
 	}
 	return m, nil
 }
@@ -608,6 +612,8 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.askConfirm(actionEmpty)
 	case "v":
 		return m.openViewer()
+	case "o":
+		return m.openFile()
 	case "u":
 		cmd := m.askUndo()
 		return m, cmd

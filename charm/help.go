@@ -65,6 +65,7 @@ var helpGroups = []helpGroup{
 		{"T", "the largest files, any depth"},
 		{"F", "find duplicate files (reads them)"},
 		{"v", "view a file"},
+		{"o", "open a file in its default app"},
 		{"?", "this screen"},
 		{"esc", "back — cancel a scan, or clear the marks"},
 		{"q", "quit"},
