@@ -585,7 +585,8 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgdown":
 		m.moveCursor(m.visibleRows())
 	case "right", "l", "enter":
-		m.descend()
+		cmd := m.descend()
+		return m, cmd
 	case keyLeft, "h", keyBackspace:
 		cmd := m.ascend()
 		return m, cmd
@@ -628,7 +629,10 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		// Space queues the row for a batch delete and steps down, so a run of rows is
 		// marked by holding it — the whole reason marking beats deleting one at a time.
-		m.toggleMark(m.selected())
+		// The ../ row is not a child and cannot be queued; space there only steps down.
+		if !m.isParentRow(m.selected()) {
+			m.toggleMark(m.selected())
+		}
 		m.moveCursor(1)
 	case "M":
 		return m.openQueue()
@@ -645,12 +649,21 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) descend() {
+func (m *model) descend() tea.Cmd {
 	item := m.selected()
-	if item == nil || !item.IsDir() {
-		return
+	if item == nil {
+		return nil
+	}
+	// → on the ../ row goes up, not in: it is the parent, and entering it is the one
+	// move it stands for.
+	if m.isParentRow(item) {
+		return m.ascend()
+	}
+	if !item.IsDir() {
+		return nil
 	}
 	m.enterDir(item)
+	return nil
 }
 
 func (m *model) ascend() tea.Cmd {
@@ -747,9 +760,28 @@ func (m *model) enterDir(dir fs.Item) {
 			return m.rows[i].IsDir() && !m.rows[j].IsDir()
 		})
 	}
-	m.filtering, m.filter, m.filtered = false, "", nil
+	// A ../ row leads the list whenever there is a parent in the tree, added after
+	// the sort so it never sinks into it. It is the real parent item — → enters it
+	// and the cursor can rest on it — but it is not a child: it carries no bar and
+	// cannot be deleted or marked. The cursor opens on the first real row, not on
+	// the way out.
 	m.cursor = 0
+	if dir.GetParent() != nil {
+		m.rows = append([]fs.Item{dir.GetParent()}, m.rows...)
+		if len(m.rows) > 1 {
+			m.cursor = 1
+		}
+	}
+	m.filtering, m.filter, m.filtered = false, "", nil
 	m.offset = 0
+}
+
+// isParentRow reports whether an item is the ../ row — the current directory's
+// parent, shown at the head of the list. It is a real directory but not one of the
+// current directory's children, so every action that treats the list as children
+// (delete, mark, the usage bar) has to let it out.
+func (m *model) isParentRow(item fs.Item) bool {
+	return item != nil && m.currentDir != nil && item == m.currentDir.GetParent()
 }
 
 // items is the list the cursor and window move over: the filtered subset when a

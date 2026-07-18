@@ -31,6 +31,73 @@ func rootModelAt(path string) *model {
 	return m
 }
 
+// subdirModel builds a scan with a subdirectory and descends into it, so the
+// listing shown has a real parent above it. Returns the model and the sub.
+func subdirModel(t *testing.T) (*model, *analyze.Dir) {
+	t.Helper()
+	m := rootModelAt("/home/user/project")
+	root := m.currentDir.(*analyze.Dir)
+	sub := &analyze.Dir{File: &analyze.File{Name: "src", Parent: root}}
+	sub.AddFile(&analyze.File{Name: "main.go", Size: 100, Usage: 100, Parent: sub})
+	sub.AddFile(&analyze.File{Name: "util.go", Size: 40, Usage: 40, Parent: sub})
+	root.AddFile(sub)
+	root.UpdateStats(make(fs.HardLinkedItems))
+	m.enterDir(sub)
+	return m, sub
+}
+
+// Inside the tree the listing leads with a ../ row — the real parent — and the
+// cursor opens on the first real child, not on the way out.
+func TestParentRowLeadsASubdirListing(t *testing.T) {
+	m, sub := subdirModel(t)
+
+	require.True(t, m.isParentRow(m.rows[0]), "the first row is ..")
+	assert.Equal(t, sub.GetParent(), m.rows[0], "and it is the real parent directory")
+	assert.False(t, m.isParentRow(m.rows[1]), "the children follow it")
+	assert.Equal(t, 1, m.cursor, "the cursor opens on the first child, not on ..")
+
+	// The scan root itself shows no ../ row — there is nothing above it in the tree.
+	root := rootModelAt("/home/user/project")
+	assert.False(t, root.isParentRow(root.rows[0]), "the root's list has no .. row")
+}
+
+// → or enter on the ../ row goes up, landing back on the directory you were in.
+func TestEnterOnTheParentRowGoesUp(t *testing.T) {
+	m, sub := subdirModel(t)
+	m.cursor = 0 // onto ..
+
+	m = press(t, m, "enter")
+	assert.Equal(t, sub.GetParent(), m.currentDir, "enter on .. returns to the parent")
+	require.NotNil(t, m.selected())
+	assert.Equal(t, "src", m.selected().GetName(), "with the cursor on the directory we came out of")
+}
+
+// The ../ row is a way out, not a child: it cannot be deleted, emptied, or marked.
+func TestParentRowResistsDestructiveKeys(t *testing.T) {
+	m, _ := subdirModel(t)
+	m.cursor = 0 // onto ..
+
+	m = press(t, m, "d")
+	assert.Equal(t, screenBrowse, m.scr, "d on .. opens no confirm")
+	assert.Nil(t, m.confirm)
+
+	m = press(t, m, " ")
+	assert.Equal(t, 0, m.markedCount(), ".. cannot be marked")
+	assert.Equal(t, 1, m.cursor, "though space still steps past it")
+}
+
+// A filter searches children, so the ../ row drops out of the results rather than
+// matching on the parent directory's real name.
+func TestFilterHidesTheParentRow(t *testing.T) {
+	m, _ := subdirModel(t) // parent is "project"; children are main.go, util.go
+
+	m = press(t, m, "/", "m", "a", "i", "n")
+	for _, it := range m.items() {
+		assert.False(t, m.isParentRow(it), ".. must not appear in filtered results")
+	}
+	assert.Equal(t, "main.go", m.items()[0].GetName(), "only the matching child shows")
+}
+
 // canAscendOnDisk is true only at the scan root, off the device list, from a real
 // path with a parent to climb to.
 func TestCanAscendOnDisk(t *testing.T) {

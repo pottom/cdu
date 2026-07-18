@@ -74,6 +74,12 @@ func (m *model) applyFilter() {
 
 	out := make([]fs.Item, 0, len(m.rows))
 	for _, item := range m.rows {
+		// The ../ row is a way out, not a child to search — and it would match on the
+		// parent's real name, not on "..", so filtering hides it rather than letting
+		// it flicker in and out on an unrelated word.
+		if m.isParentRow(item) {
+			continue
+		}
 		if ok, _ := fuzzyMatch(item.GetName(), m.filter); ok {
 			out = append(out, item)
 		}
