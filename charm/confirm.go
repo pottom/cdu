@@ -111,7 +111,7 @@ func (m *model) target() (item, parent fs.Item) {
 // queue screen — the whole marked set is what the key acts on instead. The single
 // row is the fallback, not the rule that has to be worked around.
 func (m *model) askConfirm(act action) {
-	if m.markedCount() > 0 && (m.scr == screenBrowse || m.scr == screenQueue) {
+	if m.markedCount() > 0 && m.marksActOnSet() {
 		m.askConfirmBatch(act)
 		return
 	}

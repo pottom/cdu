@@ -62,6 +62,57 @@ func (m *model) unmarkAll() {
 
 func (m *model) markedCount() int { return len(m.marked) }
 
+// markUnderCursor toggles the item the cursor is on, on whichever list is showing —
+// the browser, the largest-files or duplicate screens, or find. It reads the cursor
+// through target(), so one helper serves every screen; advancing the cursor is the
+// caller's job, since each list moves its own.
+func (m *model) markUnderCursor() {
+	item, _ := m.target()
+	if item == nil || m.isParentRow(item) {
+		return
+	}
+	m.toggleMark(item)
+}
+
+// marksActOnSet reports whether the destructive keys should act on the marked set
+// rather than the cursor row: on every list that can mark, which is all of them
+// except the modes that have no list.
+func (m *model) marksActOnSet() bool {
+	//nolint:exhaustive // the default covers every screen that has no list to mark
+	switch m.scr {
+	case screenBrowse, screenQueue, screenTop, screenDup, screenFind:
+		return true
+	default:
+		return false
+	}
+}
+
+// markOverlay reports whether a row should show the mark as an overlay — the tick
+// and the band. It is drawn on the browsing lists but not on the queue, where every
+// row is marked by definition and a screen of bands would just be noise.
+func (m *model) markOverlay(item fs.Item) bool {
+	return m.scr != screenQueue && m.isMarked(item)
+}
+
+// listSelMarker is the cursor-row gutter for the top/dup/find lists: the tick when
+// the row is also marked (the selection band already shows the cursor), else the bar.
+func (m *model) listSelMarker(item fs.Item) string {
+	if m.markOverlay(item) {
+		return m.st.accent.Render(m.markGlyph())
+	}
+	return m.st.accent.Render("▌")
+}
+
+// markedListRow paints a marked, non-cursor row of the top/dup/find lists as the
+// same filled band the browser gives a marked row, so a queue building up reads the
+// same on every screen.
+func (m *model) markedListRow(plain string) string {
+	if m.width < 2 {
+		return m.st.marked.Render(m.markGlyph())
+	}
+	return m.st.marked.Render(m.markGlyph()) + m.st.marked.Render(clipTo(plain, m.width-1))
+}
+
 // isAncestorMarked reports whether a marked directory contains this item. Such an
 // item is already covered — deleting the ancestor takes it too — so it must not be
 // counted a second time in the reclaimable total, nor deleted on its own.

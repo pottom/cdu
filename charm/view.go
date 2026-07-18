@@ -891,6 +891,8 @@ var (
 	dupKeys = []keyHint{
 		{key: "↑↓", label: "move"},
 		{key: "↵", label: "reveal"},
+		{key: "space", label: "mark", drop: 3},
+		{key: "M", label: "queue", drop: 4},
 		{key: "v", label: "view", drop: 3},
 		{key: "o", label: "open", drop: 3},
 		{key: "d", label: "trash", drop: 1},
@@ -903,6 +905,8 @@ var (
 	findKeys = []keyHint{
 		{key: "↑↓", label: "move"},
 		{key: "↵", label: "reveal"},
+		{key: "space", label: "mark", drop: 3},
+		{key: "M", label: "queue", drop: 4},
 		{key: "v", label: "view", drop: 3},
 		{key: "o", label: "open", drop: 3},
 		{key: "d", label: "trash", drop: 1},
@@ -914,6 +918,8 @@ var (
 	topKeys = []keyHint{
 		{key: "↑↓", label: "move"},
 		{key: "↵", label: "reveal"},
+		{key: "space", label: "mark", drop: 3},
+		{key: "M", label: "queue", drop: 4},
 		{key: "v", label: "view", drop: 3},
 		{key: "o", label: "open", drop: 3},
 		{key: "d", label: "trash", drop: 1},
@@ -1080,6 +1086,11 @@ func (m *model) footerRight() (string, lipgloss.Style) {
 			return m.status, m.st.danger
 		}
 		return m.status, m.st.accent
+	case m.scr != screenBrowse && m.markedCount() > 0:
+		// The browser carries the tally in its header; the other lists have no such
+		// breadcrumb, so it rides the footer there instead — a marked set is worth
+		// seeing from whichever screen you built it on.
+		return m.markTally(), m.st.accent
 	case m.scr == screenBrowse && m.duplicateNote() != "":
 		// The cursor is on a duplicate. Spell out what the mark means here, where it
 		// can be read — it outranks the sort label, which says nothing about this row.

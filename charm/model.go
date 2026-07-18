@@ -635,10 +635,7 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		// Space queues the row for a batch delete and steps down, so a run of rows is
 		// marked by holding it — the whole reason marking beats deleting one at a time.
-		// The ../ row is not a child and cannot be queued; space there only steps down.
-		if !m.isParentRow(m.selected()) {
-			m.toggleMark(m.selected())
-		}
+		m.markUnderCursor()
 		m.moveCursor(1)
 	case "M":
 		return m.openQueue()

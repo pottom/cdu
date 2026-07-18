@@ -250,6 +250,51 @@ func TestAMarkedRowRendersAsABand(t *testing.T) {
 	assert.NotContains(t, plain, "48;2")
 }
 
+// Marking is not the browser's alone: space marks on the largest-files screen too,
+// and the destructive keys act on the set from there.
+func TestMarkingWorksOnTheLargestFilesScreen(t *testing.T) {
+	m := benchModel(5)
+	m.collectTopFiles()
+	require.Equal(t, screenTop, m.scr)
+	require.NotEmpty(t, m.topFiles)
+
+	first := m.topFiles[0]
+	m = press(t, m, " ")
+	assert.True(t, m.isMarked(first), "space marks the file under the cursor")
+	assert.Equal(t, 1, m.topCursor, "and steps down")
+
+	m = press(t, m, "d")
+	require.Equal(t, screenConfirm, m.scr, "d from here still opens a confirm")
+	require.NotNil(t, m.confirm)
+	assert.NotEmpty(t, m.confirm.batch, "and it acts on the marked set, not one row")
+}
+
+// The mark overlay — the tick and the band — is drawn on the browsing lists but not
+// on the queue, where every row is marked and a screen of bands would be noise.
+func TestMarkOverlayIsOffOnTheQueue(t *testing.T) {
+	m := benchModel(5)
+	item := m.rows[0]
+	m.marked[item] = true
+
+	m.scr = screenTop
+	assert.True(t, m.markOverlay(item), "a marked row stands out on the largest-files list")
+	m.scr = screenQueue
+	assert.False(t, m.markOverlay(item), "but not on the queue, which is all marked")
+}
+
+// The set is what the destructive keys act on from every list, not just the browser.
+func TestMarksActOnTheSetFromEveryList(t *testing.T) {
+	m := benchModel(1)
+	for _, scr := range []screen{screenBrowse, screenTop, screenDup, screenFind, screenQueue} {
+		m.scr = scr
+		assert.True(t, m.marksActOnSet(), "marks act on the set on %v", scr)
+	}
+	for _, scr := range []screen{screenScanning, screenConfirm, screenViewer, screenDisks, screenHelp} {
+		m.scr = scr
+		assert.False(t, m.marksActOnSet(), "no list to mark on %v", scr)
+	}
+}
+
 // assertErr is a stand-in filesystem error for the partial-failure test.
 var assertErr = &fsError{"permission denied"}
 

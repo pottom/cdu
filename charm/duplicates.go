@@ -213,6 +213,11 @@ func (m *model) handleDupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openViewer()
 	case "o":
 		return m.openFile()
+	case " ":
+		m.markUnderCursor()
+		m.moveDupCursor(1)
+	case "M":
+		return m.openQueue()
 	case "d":
 		m.askConfirm(actionTrash)
 	case "D":
@@ -396,9 +401,12 @@ func (m *model) viewDupFile(r *dupRow, selected bool) string {
 	plain := branch + sizeText + " " + pathText
 	if selected {
 		if m.width < 2 {
-			return m.st.accent.Render("▌")
+			return m.listSelMarker(r.file)
 		}
-		return m.st.accent.Render("▌") + m.st.selected.Render(clipTo(plain, m.width-1))
+		return m.listSelMarker(r.file) + m.st.selected.Render(clipTo(plain, m.width-1))
+	}
+	if m.markOverlay(r.file) {
+		return m.markedListRow(plain)
 	}
 	if 1+runewidth.StringWidth(plain) > m.width {
 		return m.st.fileName.Render(clipTo(" "+plain, m.width))
