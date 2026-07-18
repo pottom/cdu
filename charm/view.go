@@ -48,9 +48,10 @@ const (
 	// somewhere to live. Smaller than this and we clamp rather than crash.
 	minHeightForChrome = 5
 
-	// diskBarWidth is fixed: the disk line reads as a gauge, and a gauge that
-	// changes length with the window is hard to compare against itself.
-	diskBarWidth = 24
+	// minDiskBar is the shortest the header gauge is allowed to be. Above it the
+	// bar takes whatever the line has left after the name and the figures, so on a
+	// wide terminal it fills the header rather than sitting small in a corner.
+	minDiskBar = 16
 
 	minNameWidth = 4
 
@@ -341,14 +342,39 @@ func (m *model) viewHeader() string {
 // chopped off tells you nothing about where you are.
 func (m *model) viewBrand() string {
 	const wordmark = "cdu ✦"
-	const tagline = "charm disk usage"
 
+	// Everywhere but the browser, the header path is a *title* — what you are
+	// looking at, "duplicate files under ~/Work" — so it leads, right after the
+	// wordmark, bright, tagline dropped. On the browser it is a *breadcrumb* —
+	// where you are — so it stays quiet on the right and the tagline fills the gap.
+	if m.scr != screenBrowse {
+		return m.viewTitle(wordmark, m.headerPath())
+	}
+	return m.viewBreadcrumb(wordmark, "charm disk usage", m.headerPath())
+}
+
+// viewTitle puts the wordmark and a bright title on the left. The title takes
+// the size colour — green — the same colour the browser's breadcrumb has always
+// used for the path, so "where you are" reads the same whichever screen you are
+// on. A title that will not fit keeps its tail: the specific end (the pattern,
+// the directory) matters more than the word "duplicate" it starts with.
+func (m *model) viewTitle(wordmark, title string) string {
+	if title == "" {
+		return m.st.accent.Render(runewidth.Truncate(wordmark, max(m.width, 1), ""))
+	}
+	full := wordmark + "  " + title
+	if runewidth.StringWidth(full) > m.width {
+		return m.st.size.Render(runewidth.FillRight(middleTruncate(title, max(m.width, 1)), max(m.width, 1)))
+	}
+	pad := m.width - runewidth.StringWidth(full)
+	return m.st.accent.Render(wordmark) + "  " + m.st.size.Render(title) + strings.Repeat(" ", max(pad, 0))
+}
+
+func (m *model) viewBreadcrumb(wordmark, tagline, path string) string {
 	left := wordmark
 	if m.width >= minWidthForTagline {
 		left += "  " + tagline
 	}
-
-	path := m.headerPath()
 
 	const gap = 2
 	avail := m.width - runewidth.StringWidth(left) - gap
@@ -359,9 +385,6 @@ func (m *model) viewBrand() string {
 	path = middleTruncate(path, avail)
 	pad := m.width - runewidth.StringWidth(left) - runewidth.StringWidth(path)
 
-	// The wordmark and the tagline are one plain string until here, so that the
-	// padding is measured against columns rather than escape bytes; only now do
-	// they get their own styles.
 	brand := m.st.accent.Render(wordmark)
 	if m.width >= minWidthForTagline {
 		brand += "  " + m.st.dim.Render(tagline)
@@ -419,15 +442,27 @@ func (m *model) headerPath() string {
 // capacity, not against anything in the tree.
 func (m *model) viewDiskLine() string {
 	used, size := m.dev.GetUsage(), m.dev.Size
-	usage := fmt.Sprintf("%s / %s", m.ui.formatSize(used), m.ui.formatSize(size))
+	// The figures say how much, the percentage says how full — the number you
+	// actually read off a gauge. "627 GiB / 994 GiB · 63%".
+	usage := fmt.Sprintf("%s / %s · %s", m.ui.formatSize(used), m.ui.formatSize(size), formatPct(used, size))
 
-	const gaps = 2
-	labelWidth := m.width - diskBarWidth - runewidth.StringWidth(usage) - gaps
-	label := runewidth.Truncate(m.dev.Name, max(labelWidth, 0), "…")
-	label = runewidth.FillRight(label, max(labelWidth, 0))
+	const gaps = 2 // one space each side of the bar
+	// The name keeps to its own length and the bar takes the rest, so the gauge
+	// is long enough to read a level off rather than a stub beside a wide, empty
+	// label — which is what a fixed-width bar left on a roomy terminal.
+	name := m.dev.Name
+	barWidth := m.width - runewidth.StringWidth(name) - runewidth.StringWidth(usage) - gaps
 
-	bar := m.bar.render(fraction(used, size), diskBarWidth)
-	return m.st.dim.Render(label) + " " + bar + " " + m.st.pct.Render(usage)
+	// Too narrow for the whole name and a legible bar: the name gives up its
+	// columns, so the gauge stays readable rather than the label staying whole.
+	if barWidth < minDiskBar {
+		barWidth = min(minDiskBar, max(m.width-runewidth.StringWidth(usage)-gaps, 0))
+		nameW := max(m.width-barWidth-runewidth.StringWidth(usage)-gaps, 0)
+		name = runewidth.FillRight(runewidth.Truncate(name, nameW, "…"), nameW)
+	}
+
+	bar := m.bar.render(fraction(used, size), max(barWidth, 0))
+	return m.st.dim.Render(name) + " " + bar + " " + m.st.pct.Render(usage)
 }
 
 func (m *model) viewList() string {
@@ -549,11 +584,12 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	case 'H':
 		name += " ⇉"
 	}
-	// A file the duplicate search matched carries a mark of its own. It is a glyph
-	// too, for the same reason — the colour below is a second cue, not the only
-	// one — so it survives mono and reads for a colourblind eye.
-	if m.isDuplicate(item) {
-		name += " " + dupMark
+	// A file the duplicate search matched carries a mark and, beside it, the words
+	// that explain the mark — "⧉ 3 copies" — so a first-time reader is never left
+	// to guess what the glyph means. The glyph is a second cue on top of the
+	// colour, so the row still reads under mono and to a colourblind eye.
+	if tag := m.duplicateTag(item); tag != "" {
+		name += " " + tag
 	}
 	if removing {
 		// The word, not just the spinner: the state has to survive --no-color and a
@@ -683,23 +719,23 @@ type keyHint struct {
 // Sorting costs one hint here rather than four, because the fields are asked for
 // only once s has been pressed — and then the footer explains nothing else.
 var (
+	// The footer shows the essentials and the way to everything else. It used to
+	// list a dozen keys and the fitKeys logic quietly dropped most of them on any
+	// real terminal — including ? itself, so the one key that reveals the rest was
+	// the first to go. Now it shows what you navigate with, the commonest action,
+	// and ? — which opens the screen that has every key on it. Discover the rest
+	// there, not by squinting at a truncated footer.
 	browseKeys = []keyHint{
 		{key: "↑↓", label: "move"},
 		{key: "→", label: "open"},
 		{key: "←", label: "back"},
-		{key: "/", label: "filter", drop: 3},
-		{key: "f", label: "find", drop: 4},
-		{key: "v", label: "view", drop: 4},
-		{key: "s", label: "sort", drop: 2},
-		{key: "t", label: "cols", drop: 4},
-		{key: "d", label: "trash", drop: 1},
-		{key: "D", label: "delete", drop: 3},
-		{key: "r", label: "rescan", drop: 5},
+		{key: "d", label: "trash", drop: 2},
+		{key: "?", label: "help", drop: 1},
 		{key: "q", label: "quit"},
 	}
 	// undoKey appears only when there is something to undo — see browseFooterKeys.
 	// It sits after delete, which is where the eye is after a delete.
-	undoKey = keyHint{key: "u", label: "undo", drop: 5}
+	undoKey = keyHint{key: "u", label: "undo", drop: 3}
 	// The whole footer becomes the menu: while a mode is on, nothing else is worth
 	// saying, and a mode nobody can see is a trap.
 	sortMenuKeys = []keyHint{
@@ -707,6 +743,11 @@ var (
 		{key: "n", label: "name"},
 		{key: "c", label: "count"},
 		{key: "m", label: "mtime"},
+		// d is not a field but a modifier on top of the field: it floats folders
+		// above files whatever the list is sorted by. Its label flips to name what
+		// pressing it would do, since it is the one key here that toggles rather than
+		// picks. It sheds first — the four fields are the point of this menu.
+		{key: "d", label: "dirs first", drop: 4},
 		{key: "esc", label: "cancel"},
 	}
 	colMenuKeys = []keyHint{
@@ -727,6 +768,7 @@ var (
 		{key: "↑↓", label: "move"},
 		{key: "↵", label: "analyze"},
 		{key: "r", label: "reread", drop: 3},
+		{key: "?", label: "help", drop: 2},
 		{key: "q", label: "quit"},
 	}
 	helpKeys = []keyHint{
@@ -744,6 +786,7 @@ var (
 		{key: "v", label: "view", drop: 3},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 2},
+		{key: "?", label: "help", drop: 4},
 		{key: "esc", label: "back"},
 		{key: "q", label: "quit", drop: 4},
 	}
@@ -754,6 +797,7 @@ var (
 		{key: "v", label: "view", drop: 3},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 2},
+		{key: "?", label: "help", drop: 4},
 		{key: "esc", label: "back"},
 		{key: "q", label: "quit", drop: 4},
 	}
@@ -763,6 +807,7 @@ var (
 		{key: "v", label: "view", drop: 3},
 		{key: "d", label: "trash", drop: 1},
 		{key: "D", label: "delete", drop: 2},
+		{key: "?", label: "help", drop: 4},
 		{key: "esc", label: "back"},
 		{key: "q", label: "quit", drop: 4},
 	}
@@ -813,7 +858,7 @@ func (m *model) browseFooterKeys() []keyHint {
 	keys := make([]keyHint, 0, len(browseKeys)+1)
 	for _, k := range browseKeys {
 		keys = append(keys, k)
-		if k.key == "D" {
+		if k.key == "d" {
 			keys = append(keys, undoKey)
 		}
 	}
@@ -847,7 +892,7 @@ func (m *model) viewFooter() string {
 	case m.scr == screenConfirm:
 		keys = confirmKeys
 	case m.sortPending:
-		keys = sortMenuKeys
+		keys = m.sortMenuKeys()
 	case m.colPending:
 		keys = colMenuKeys
 	}
@@ -877,6 +922,11 @@ func (m *model) viewFooter() string {
 		} else {
 			rightStyle = m.st.accent
 		}
+	case m.scr == screenBrowse && m.duplicateNote() != "":
+		// The cursor is on a duplicate. Spell out what the ▲ means, here, where it
+		// can be read — it outranks the sort label, which is always available and
+		// says nothing about this row in particular.
+		right, rightStyle = m.duplicateNote(), m.st.accent
 	case m.scr == screenBrowse:
 		right = m.sortLabel()
 	}

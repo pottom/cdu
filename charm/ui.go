@@ -61,6 +61,10 @@ type UI struct {
 	showItemCount bool
 	showMtime     bool
 
+	// foldersFirst floats directories to the top of every listing. Off by default:
+	// the disk usage default is biggest-first, folder or file.
+	foldersFirst bool
+
 	sortBy    fs.SortBy
 	sortOrder fs.SortOrder
 
@@ -246,6 +250,11 @@ func (ui *UI) SetShowItemCount() {
 // SetShowMTime starts with the mtime column on (-M).
 func (ui *UI) SetShowMTime() {
 	ui.showMtime = true
+}
+
+// SetFoldersFirst starts with directories floated to the top of each listing.
+func (ui *UI) SetFoldersFirst() {
+	ui.foldersFirst = true
 }
 
 // rootPath is the absolute path the scan is rooted at, which is what the disk

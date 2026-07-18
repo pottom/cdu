@@ -74,6 +74,7 @@ type Flags struct {
 	ShowVersion        bool     `yaml:"-"`
 	ShowItemCount      bool     `yaml:"show-item-count"`
 	ShowMTime          bool     `yaml:"show-mtime"`
+	FoldersFirst       bool     `yaml:"folders-first"`
 	NoColor            bool     `yaml:"no-color"`
 	Mouse              bool     `yaml:"mouse"`
 	Icons              bool     `yaml:"icons"`
@@ -485,6 +486,9 @@ func (a *App) getCharmOptions() []charm.Option {
 	}
 	if a.Flags.ShowMTime {
 		opts = append(opts, func(ui *charm.UI) { ui.SetShowMTime() })
+	}
+	if a.Flags.FoldersFirst {
+		opts = append(opts, func(ui *charm.UI) { ui.SetFoldersFirst() })
 	}
 	if a.Flags.Sorting.Order != "" || a.Flags.Sorting.By != "" {
 		opts = append(opts, func(ui *charm.UI) {

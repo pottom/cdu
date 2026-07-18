@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/pottom/cdu/pkg/fs"
 )
 
@@ -37,7 +38,11 @@ func TestTheColumnMenuIsDiscoverableAndSwallowsEveryKey(t *testing.T) {
 	m.width, m.height, m.haveSize = 120, 24, true
 	m.scr = screenBrowse
 
-	assert.Contains(t, m.viewFooter(), "cols", "t must be discoverable")
+	// The footer no longer lists every key — it shows the essentials and ?, which
+	// opens the screen that has every key on it. So the t menu is discovered
+	// through help, not the footer.
+	assert.Contains(t, m.viewFooter(), "help", "? must be in the footer, as the way to everything else")
+	assert.Contains(t, allHelpText(), "columns", "and the t menu must be documented in the help")
 
 	m = press(t, m, "t")
 	require.True(t, m.colPending)
@@ -161,4 +166,31 @@ func TestRowWidthSurvivesEveryColumnCombination(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Folders-first floats directories to the top, keeping the engine's order within
+// each group — a stable partition, not a re-sort. Off, biggest-first mixes them.
+func TestFoldersFirstToggle(t *testing.T) {
+	m := benchModel(0)
+	dir := m.currentDir.(*analyze.Dir)
+	// A small folder and a big file: by size the file leads; folders-first floats
+	// the folder above it.
+	sub := &analyze.Dir{File: &analyze.File{Name: "asub", Parent: dir}}
+	sub.AddFile(&analyze.File{Name: "x", Size: 10, Usage: 10, Parent: sub})
+	dir.AddFile(sub)
+	dir.AddFile(&analyze.File{Name: "big.bin", Size: 9000, Usage: 9000, Parent: dir})
+	dir.UpdateStats(make(fs.HardLinkedItems))
+	m.reloadRows()
+
+	require.False(t, m.ui.foldersFirst)
+	assert.Equal(t, "big.bin", m.rows[0].GetName(), "off: biggest first, the file leads")
+
+	m.sortPending = true
+	m.handleSortKey("d")
+	require.True(t, m.ui.foldersFirst, "d in the sort menu toggles it")
+	assert.True(t, m.rows[0].IsDir(), "on: the folder floats above the bigger file")
+	assert.Equal(t, "big.bin", m.rows[1].GetName(), "and the file follows")
+
+	// The toggle is saved with the rest of the view.
+	assert.True(t, m.ui.viewSettings().FoldersFirst)
 }

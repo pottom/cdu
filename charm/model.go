@@ -1,8 +1,10 @@
 package charm
 
 import (
+	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -191,6 +193,9 @@ type model struct {
 	topCursor int
 	topOffset int
 
+	// homeDir is the user's home, resolved once, for shortening title paths to ~.
+	homeDir string
+
 	// helpFrom is the screen ? was pressed on, and the one it returns to. The
 	// help is reachable from all of them.
 	helpFrom   screen
@@ -202,7 +207,10 @@ type model struct {
 	// a group, for the ▲ the browser draws beside it.
 	dupGroups []dup.Group
 	dupRows   []dupRow
-	dupMarked map[fs.Item]bool
+	// dupMarked maps a browser file to its duplicate group, so the ▲ can be drawn
+	// and the cursor's row can say how many copies it has. A bool would draw the
+	// mark but could not explain it.
+	dupMarked map[fs.Item]*dup.Group
 	dupCursor int
 	dupOffset int
 }
@@ -224,6 +232,14 @@ func newModel(ui *UI) *model {
 	st := newStyles(&ui.theme, ui.UseColors)
 	sp.Style = st.accent
 
+	// Resolved once: a title path is home-shortened on every frame, and
+	// os.UserHomeDir is a syscall not worth repeating. An error leaves it empty,
+	// which shortPath treats as "no home to collapse" — the full path, not a crash.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+
 	return &model{
 		ui:      ui,
 		spinner: sp,
@@ -231,6 +247,7 @@ func newModel(ui *UI) *model {
 		st:      st,
 		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
+		homeDir: home,
 		// Where the modal and the viewer return to when they close. They are set
 		// again on the way in, but the zero value of a screen is screenScanning —
 		// so anything that missed a step would close onto the scan screen, which is
@@ -604,6 +621,16 @@ func (m *model) enterDir(dir fs.Item) {
 		m.maxRowSize = max(m.maxRowSize, m.itemSize(item))
 		m.rows = append(m.rows, item)
 	}
+	// With folders-first on, directories float to the top, keeping the engine's
+	// order within each group — a stable partition, not a re-sort. It is the file
+	// manager's habit rather than the disk usage default: off, the biggest thing
+	// leads whether it is a folder or a file, which is the "what is eating my
+	// disk" answer. On, it is the "where do I go" answer instead.
+	if m.ui.foldersFirst {
+		sort.SliceStable(m.rows, func(i, j int) bool {
+			return m.rows[i].IsDir() && !m.rows[j].IsDir()
+		})
+	}
 	m.filtering, m.filter, m.filtered = false, "", nil
 	m.cursor = 0
 	m.offset = 0
@@ -625,15 +652,27 @@ func (m *model) searchRoot() fs.Item {
 	return m.topDir
 }
 
-// searchScopeSuffix names the subtree a T/F result covers, when it is not the
-// whole scan. At the top of the tree it is empty — "largest files" reads as the
-// whole thing, which it is — and inside a directory it says which, so a short
-// list does not read as a bug.
+// searchScopeSuffix names the subtree a T/F result covers: the full path it
+// searched under, home-shortened. It always says where, root or not, so the
+// title answers "what am I looking at, and from where" without the reader having
+// to remember which directory they were in when they pressed the key.
 func (m *model) searchScopeSuffix() string {
-	if m.currentDir == nil || m.currentDir == m.topDir {
+	root := m.searchRoot()
+	if root == nil {
 		return ", any depth"
 	}
-	return " under " + m.currentDir.GetName() + ", any depth"
+	return " under " + m.shortPath(root.GetPath()) + ", any depth"
+}
+
+// shortPath collapses the home directory to ~, the way a person names a path.
+func (m *model) shortPath(path string) string {
+	if m.homeDir != "" && path == m.homeDir {
+		return "~"
+	}
+	if m.homeDir != "" && strings.HasPrefix(path, m.homeDir+"/") {
+		return "~" + path[len(m.homeDir):]
+	}
+	return path
 }
 
 func (m *model) items() []fs.Item {

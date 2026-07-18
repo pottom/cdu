@@ -33,11 +33,36 @@ func naturalOrder(by fs.SortBy) fs.SortOrder {
 	return fs.SortDesc
 }
 
+// sortMenuKeys is the static sortMenuKeys with d relabelled to what pressing it
+// would do — the one key in the menu that toggles a modifier rather than picking a
+// field, so its label has to track state the way handleToggle's status line does.
+func (m *model) sortMenuKeys() []keyHint {
+	keys := make([]keyHint, len(sortMenuKeys))
+	copy(keys, sortMenuKeys)
+	for i := range keys {
+		if keys[i].key == "d" {
+			keys[i].label = onOff(m.ui.foldersFirst, "biggest first", "dirs first")
+		}
+	}
+	return keys
+}
+
 // handleSortKey is the second half of the two-key sort. Anything that is not a
 // field simply leaves sort mode: a stray keypress must not silently reorder the
 // list, and it must not be swallowed either.
 func (m *model) handleSortKey(key string) {
 	m.sortPending = false
+
+	// d is not a sort field but a modifier that sits on top of one: it floats
+	// folders above files whatever the field is. It lives in this menu, not the t
+	// menu, because it changes the order and not a column — the t menu toggles
+	// columns.
+	if key == "d" {
+		m.ui.foldersFirst = !m.ui.foldersFirst
+		m.reloadRows()
+		m.status, m.statusIsError = "order: "+onOff(m.ui.foldersFirst, "folders first", "biggest first"), false
+		return
+	}
 
 	by, ok := sortFieldKeys[key]
 	if !ok {

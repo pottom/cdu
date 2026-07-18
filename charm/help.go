@@ -53,7 +53,7 @@ var helpGroups = []helpGroup{
 		// stops a mode being invisible. Repeating the words here only made the line
 		// too long to fit. Naming the keys is not optional though — they are
 		// bindings, and this screen is every binding.
-		{"s", "sort, then s n c m"},
+		{"s", "sort, then s n c m — or d for folders first"},
 		{"t", "columns, then a B c m — or s to save"},
 		{"a", "apparent size ⇄ disk usage"},
 		{"B", "bars: largest item ⇄ this directory"},

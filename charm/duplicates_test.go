@@ -317,7 +317,7 @@ func TestFindDuplicatesSearchesFromTheCurrentDirectory(t *testing.T) {
 	scoped := runSearch(t, whole)
 	require.Len(t, scoped.dupGroups, 1, "inside sub, only sub's duplicates")
 	assert.Contains(t, scoped.dupGroups[0].Files[0].GetName(), "deep")
-	assert.Contains(t, scoped.headerPath(), "under sub", "the header says which subtree it searched")
+	assert.Contains(t, scoped.headerPath(), "/sub", "the header names the subtree it searched")
 }
 
 // The same for the largest-files screen.
@@ -341,5 +341,44 @@ func TestLargestFilesSearchesFromTheCurrentDirectory(t *testing.T) {
 	for _, f := range m.topFiles {
 		assert.NotEqual(t, "huge.bin", f.GetName(), "a file outside the current subtree must not appear")
 	}
-	assert.Contains(t, m.headerPath(), "under sub")
+	assert.Contains(t, m.headerPath(), "/sub")
+}
+
+// The ▲ is a glyph a first-time user has not learned. On the row it marks, the
+// footer spells it out: how many copies, how much is reclaimable, how to see
+// them. The mark teaches its own meaning.
+func TestTheFooterExplainsTheDuplicateMarkOnTheCursorRow(t *testing.T) {
+	withProfile(t, termenv.TrueColor)
+	m := dupModel(t, map[string]string{
+		"Movies/film.mkv":  strings.Repeat("x", 5000),
+		"backup/film.mkv":  strings.Repeat("x", 5000),
+		"Movies/notes.txt": "unique",
+	})
+	m = runSearch(t, m)
+	m = press(t, m, "esc") // back to the browser
+
+	// Into Movies, onto the duplicated file.
+	for i, r := range m.rows {
+		if r.IsDir() && r.GetName() == "Movies" {
+			m.cursor = i
+		}
+	}
+	m = press(t, m, "right")
+
+	var onDup, onPlain bool
+	for i, r := range m.rows {
+		m.cursor = i
+		note := m.duplicateNote()
+		if m.isDuplicate(r) {
+			require.NotEmpty(t, note, "%s is a duplicate; the footer must explain it", r.GetName())
+			assert.Contains(t, note, "copies")
+			assert.Contains(t, note, "reclaim")
+			assert.Contains(t, m.viewFooter(), "copies", "and it must reach the footer")
+			onDup = true
+		} else {
+			assert.Empty(t, note, "%s is not a duplicate; no note", r.GetName())
+			onPlain = true
+		}
+	}
+	assert.True(t, onDup && onPlain, "the directory needs both a duplicate and a plain file")
 }

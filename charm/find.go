@@ -127,13 +127,14 @@ func (m *model) runFind() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// searchScopeWord names the subtree a find covered, for the "nothing matched"
-// message. Empty at the top of the tree, where it would be redundant.
+// searchScopeWord names the subtree a find covered — the full path,
+// home-shortened — for the header title and the "nothing matched" message.
 func (m *model) searchScopeWord() string {
-	if m.currentDir == nil || m.currentDir == m.topDir {
+	root := m.searchRoot()
+	if root == nil {
 		return ""
 	}
-	return " under " + m.currentDir.GetName()
+	return " under " + m.shortPath(root.GetPath())
 }
 
 func (m *model) selectedFind() fs.Item {

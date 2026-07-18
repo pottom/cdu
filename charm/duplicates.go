@@ -18,12 +18,33 @@ import (
 // that share a size with another, which is most of the cost avoided before it is
 // paid: unique sizes are never opened. It is cancellable with esc, like a scan.
 
-// dupMark is the glyph a duplicated file carries in the browser. A geometric
-// triangle rather than the warning sign ⚠: runewidth measures both as one cell,
-// but ⚠ is in the emoji block and a colour terminal may draw it two cells wide,
-// which would shift the row. The triangle is stable. It renders in the accent,
-// like the rest of a duplicate's name.
-const dupMark = "▲"
+// dupMark is the glyph a duplicated file carries. Two joined squares — two
+// copies — because a shape has to say what it means, and a warning triangle
+// says "danger", not "duplicate". Never an emoji-range glyph like ⚠: runewidth
+// measures it as one cell but a colour terminal may draw it two wide, shifting
+// the row. ⧉ is a stable geometric symbol. It renders in the accent, and it is
+// always followed by words — "⧉ 3 copies" — so it never stands alone to be
+// puzzled over.
+const dupMark = "⧉"
+
+// duplicateGroup returns the group a file belongs to, or nil. It is what lets a
+// browser row show both the mark and the count.
+func (m *model) duplicateGroup(item fs.Item) *dup.Group {
+	if m.dupMarked == nil {
+		return nil
+	}
+	return m.dupMarked[item]
+}
+
+// duplicateTag is the words that ride beside the mark on a duplicated row:
+// "⧉ 3 copies". The mark catches the eye; the words say what it caught.
+func (m *model) duplicateTag(item fs.Item) string {
+	g := m.duplicateGroup(item)
+	if g == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s %d copies", dupMark, len(g.Files))
+}
 
 // dupRow is one line of the duplicate screen: a group header, or a file in one.
 type dupRow struct {
@@ -115,14 +136,14 @@ func (m *model) applyDupDone(msg dupDoneMsg) (tea.Model, tea.Cmd) {
 func (m *model) setDuplicates(groups []dup.Group) {
 	m.dupGroups = groups
 	m.dupRows = m.dupRows[:0]
-	m.dupMarked = make(map[fs.Item]bool)
+	m.dupMarked = make(map[fs.Item]*dup.Group)
 
 	for i := range groups {
 		g := &groups[i]
 		m.dupRows = append(m.dupRows, dupRow{group: g})
 		for j, f := range g.Files {
 			m.dupRows = append(m.dupRows, dupRow{file: f, size: g.Size, last: j == len(g.Files)-1})
-			m.dupMarked[f] = true
+			m.dupMarked[f] = g
 		}
 	}
 }
@@ -131,7 +152,23 @@ func (m *model) setDuplicates(groups []dup.Group) {
 // marked set is kept rather than recomputed: the browser asks this for every
 // visible row, every frame.
 func (m *model) isDuplicate(item fs.Item) bool {
-	return m.dupMarked != nil && m.dupMarked[item]
+	return m.dupMarked != nil && m.dupMarked[item] != nil
+}
+
+// duplicateNote is what the footer says while the cursor sits on a duplicate: the
+// ▲ is a glyph you have to learn, so on the row it marks, the words are spelled
+// out. It names how many copies and how to see them, which is what a first-time
+// reader needs the mark to mean.
+func (m *model) duplicateNote() string {
+	if m.dupMarked == nil {
+		return ""
+	}
+	g := m.dupMarked[m.selected()]
+	if g == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s %d copies · reclaim %s · F lists them",
+		dupMark, len(g.Files), m.ui.formatSize(g.Reclaimable()))
 }
 
 func (m *model) dupSummary() string {
@@ -326,11 +363,13 @@ func (m *model) viewDupRow(r *dupRow, selected bool) string {
 }
 
 // viewDupHeader labels a group by what it costs: how many copies, each how big,
-// and how much deleting the extras would free.
+// and how much deleting the extras would free. It leads with the same ▲ that
+// marks these files in the browser, so the mark you learn here is the mark you
+// look for there.
 func (m *model) viewDupHeader(g *dup.Group) string {
-	label := fmt.Sprintf("%d copies · %s each · reclaim %s",
-		len(g.Files), m.ui.formatSize(g.Size), m.ui.formatSize(g.Reclaimable()))
-	return m.st.dirName.Render(clipTo(" "+label, m.width))
+	label := fmt.Sprintf("%s %d copies · %s each · reclaim %s",
+		dupMark, len(g.Files), m.ui.formatSize(g.Size), m.ui.formatSize(g.Reclaimable()))
+	return m.st.accent.Render(clipTo(" "+label, m.width))
 }
 
 func (m *model) viewDupFile(r *dupRow, selected bool) string {

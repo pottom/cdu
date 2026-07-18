@@ -164,7 +164,7 @@ func TestFindSearchesFromTheCurrentDirectory(t *testing.T) {
 
 	require.Len(t, m.findResults, 1)
 	assert.Equal(t, "deep.mkv", m.findResults[0].GetName())
-	assert.Contains(t, m.headerPath(), "under sub")
+	assert.Contains(t, m.headerPath(), "/sub")
 }
 
 // Reveal opens the match's directory, and delete targets the file's own parent.

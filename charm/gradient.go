@@ -14,7 +14,10 @@ import (
 // The design draws the usage bar as a CSS linear-gradient. A terminal cannot
 // fill a cell with a gradient, so the closest honest translation is to colour
 // every cell of the bar separately, interpolating between the two endpoints
-// across the filled part.
+// across the whole track width. A cell's colour is fixed by its position in the
+// bar, so the gradient's dark end belongs to a full bar and a short bar is just
+// the light beginning of it — the tip colour then reads as the row's size, and
+// no bar has the whole gradient crushed into a handful of cells.
 //
 // That only reads as a gradient with 24-bit colour. On a 256-colour terminal the
 // interpolation quantises into visible bands, which looks like a rendering fault
@@ -180,7 +183,7 @@ func (b *barRenderer) renderOn(p *barPaint, frac float64, width int) string {
 	case barGradient:
 		var sb strings.Builder
 		for i := range filled {
-			sb.WriteString(p.ramp[rampIndex(i, filled)])
+			sb.WriteString(p.ramp[rampIndex(i, width)])
 		}
 		sb.WriteString(b.paint(&p.track, b.chars.empty, empty))
 		return sb.String()
@@ -199,9 +202,11 @@ func (b *barRenderer) plainCells(frac float64, width int) string {
 	return strings.Repeat(b.chars.full, filled) + strings.Repeat(b.chars.empty, width-filled)
 }
 
-// rampIndex maps cell i of a filled run of n onto the precomputed ramp. A run of
-// one sits at the start of the gradient rather than in the middle of it, so a
-// sliver of a bar is pink — the same colour a long bar starts with.
+// rampIndex maps cell i of a bar span onto the precomputed ramp. The span is the
+// whole track width, not the filled run — so a cell's colour is fixed by where it
+// sits in the bar, and the gradient's dark end is reached only by a full bar. A
+// short bar is the light beginning of the gradient rather than the whole ramp
+// compressed into a few cells, and its tip colour therefore reads as its size.
 func rampIndex(i, n int) int {
 	if n <= 1 {
 		return 0
@@ -233,10 +238,9 @@ func (b *barRenderer) filledCells(frac float64, width int) int {
 	return min(max(n, 1), width)
 }
 
-// cellStyle is the colour of cell i of a filled run of n cells. The gradient
-// spans the filled part, exactly as the mock's `.barfill` carries the gradient
-// rather than the track behind it — so a short bar is pink-to-purple in
-// miniature, not a pink stub.
+// cellStyle is the colour of cell i of a span of n cells. It builds the ramp the
+// renderer indexes into with rampIndex; the span there is the whole track width,
+// so the endpoints are the colours of an empty and a completely full bar.
 func (b *barRenderer) cellStyle(i, n int) lipgloss.Style {
 	t := 0.0
 	if n > 1 {

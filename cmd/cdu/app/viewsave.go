@@ -24,6 +24,7 @@ func (a *App) saveView(v charm.ViewSettings) (string, error) {
 	a.Flags.ShowRelativeSize = v.ShowRelativeSize
 	a.Flags.ShowItemCount = v.ShowItemCount
 	a.Flags.ShowMTime = v.ShowMTime
+	a.Flags.FoldersFirst = v.FoldersFirst
 	a.Flags.Sorting.By = v.SortBy
 	a.Flags.Sorting.Order = v.SortOrder
 
