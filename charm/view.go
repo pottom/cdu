@@ -743,6 +743,11 @@ var (
 		{key: "n", label: "name"},
 		{key: "c", label: "count"},
 		{key: "m", label: "mtime"},
+		// d is not a field but a modifier on top of the field: it floats folders
+		// above files whatever the list is sorted by. Its label flips to name what
+		// pressing it would do, since it is the one key here that toggles rather than
+		// picks. It sheds first — the four fields are the point of this menu.
+		{key: "d", label: "dirs first", drop: 4},
 		{key: "esc", label: "cancel"},
 	}
 	colMenuKeys = []keyHint{
@@ -887,7 +892,7 @@ func (m *model) viewFooter() string {
 	case m.scr == screenConfirm:
 		keys = confirmKeys
 	case m.sortPending:
-		keys = sortMenuKeys
+		keys = m.sortMenuKeys()
 	case m.colPending:
 		keys = colMenuKeys
 	}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -619,6 +620,16 @@ func (m *model) enterDir(dir fs.Item) {
 	for item := range dir.GetFiles(m.ui.sortBy, m.ui.sortOrder) {
 		m.maxRowSize = max(m.maxRowSize, m.itemSize(item))
 		m.rows = append(m.rows, item)
+	}
+	// With folders-first on, directories float to the top, keeping the engine's
+	// order within each group — a stable partition, not a re-sort. It is the file
+	// manager's habit rather than the disk usage default: off, the biggest thing
+	// leads whether it is a folder or a file, which is the "what is eating my
+	// disk" answer. On, it is the "where do I go" answer instead.
+	if m.ui.foldersFirst {
+		sort.SliceStable(m.rows, func(i, j int) bool {
+			return m.rows[i].IsDir() && !m.rows[j].IsDir()
+		})
 	}
 	m.filtering, m.filter, m.filtered = false, "", nil
 	m.cursor = 0

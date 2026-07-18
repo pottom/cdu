@@ -31,6 +31,7 @@ type ViewSettings struct {
 	ShowRelativeSize bool
 	ShowItemCount    bool
 	ShowMTime        bool
+	FoldersFirst     bool
 	// SortBy and SortOrder are the yaml spellings, the same ones fs.ParseSortBy
 	// and fs.ParseSortOrder read back.
 	SortBy    string
@@ -53,6 +54,7 @@ func (ui *UI) viewSettings() ViewSettings {
 		ShowRelativeSize: ui.ShowRelativeSize,
 		ShowItemCount:    ui.showItemCount,
 		ShowMTime:        ui.showMtime,
+		FoldersFirst:     ui.foldersFirst,
 		SortBy:           sortByYAML(ui.sortBy),
 		SortOrder:        sortOrderYAML(ui.sortOrder),
 	}
