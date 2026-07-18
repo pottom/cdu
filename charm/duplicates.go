@@ -115,14 +115,14 @@ func (m *model) applyDupDone(msg dupDoneMsg) (tea.Model, tea.Cmd) {
 func (m *model) setDuplicates(groups []dup.Group) {
 	m.dupGroups = groups
 	m.dupRows = m.dupRows[:0]
-	m.dupMarked = make(map[fs.Item]bool)
+	m.dupMarked = make(map[fs.Item]*dup.Group)
 
 	for i := range groups {
 		g := &groups[i]
 		m.dupRows = append(m.dupRows, dupRow{group: g})
 		for j, f := range g.Files {
 			m.dupRows = append(m.dupRows, dupRow{file: f, size: g.Size, last: j == len(g.Files)-1})
-			m.dupMarked[f] = true
+			m.dupMarked[f] = g
 		}
 	}
 }
@@ -131,7 +131,23 @@ func (m *model) setDuplicates(groups []dup.Group) {
 // marked set is kept rather than recomputed: the browser asks this for every
 // visible row, every frame.
 func (m *model) isDuplicate(item fs.Item) bool {
-	return m.dupMarked != nil && m.dupMarked[item]
+	return m.dupMarked != nil && m.dupMarked[item] != nil
+}
+
+// duplicateNote is what the footer says while the cursor sits on a duplicate: the
+// ▲ is a glyph you have to learn, so on the row it marks, the words are spelled
+// out. It names how many copies and how to see them, which is what a first-time
+// reader needs the mark to mean.
+func (m *model) duplicateNote() string {
+	if m.dupMarked == nil {
+		return ""
+	}
+	g := m.dupMarked[m.selected()]
+	if g == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s %d copies · reclaim %s · F lists them",
+		dupMark, len(g.Files), m.ui.formatSize(g.Reclaimable()))
 }
 
 func (m *model) dupSummary() string {

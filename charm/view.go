@@ -901,6 +901,11 @@ func (m *model) viewFooter() string {
 		} else {
 			rightStyle = m.st.accent
 		}
+	case m.scr == screenBrowse && m.duplicateNote() != "":
+		// The cursor is on a duplicate. Spell out what the ▲ means, here, where it
+		// can be read — it outranks the sort label, which is always available and
+		// says nothing about this row in particular.
+		right, rightStyle = m.duplicateNote(), m.st.accent
 	case m.scr == screenBrowse:
 		right = m.sortLabel()
 	}

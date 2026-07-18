@@ -206,7 +206,10 @@ type model struct {
 	// a group, for the ▲ the browser draws beside it.
 	dupGroups []dup.Group
 	dupRows   []dupRow
-	dupMarked map[fs.Item]bool
+	// dupMarked maps a browser file to its duplicate group, so the ▲ can be drawn
+	// and the cursor's row can say how many copies it has. A bool would draw the
+	// mark but could not explain it.
+	dupMarked map[fs.Item]*dup.Group
 	dupCursor int
 	dupOffset int
 }
