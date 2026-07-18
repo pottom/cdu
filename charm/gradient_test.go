@@ -128,6 +128,23 @@ func TestGradientColoursEveryCellDifferently(t *testing.T) {
 	assert.Equal(t, strings.ToLower(string(theme.Charm().BarTo)), strings.ToLower(hexOf(last)))
 }
 
+// The gradient is tied to the track, not the filled run: a cell's colour is set
+// by where it sits in the bar, so only a full bar reaches the dark end and a short
+// one is the light beginning of the ramp. This is what makes the tip colour read
+// as the row's size instead of every bar, long or short, running the whole ramp.
+func TestGradientIsProportionalToFill(t *testing.T) {
+	// The last cell of a full 20-wide bar is the dark endpoint; the tip of a
+	// half-full one (cell 9 of 20) stops well short of it.
+	assert.Equal(t, gradientSteps-1, rampIndex(19, 20), "a full bar reaches the dark end")
+	assert.Less(t, rampIndex(9, 20), gradientSteps-1, "a half bar's tip stops short of it")
+
+	// A cell's colour depends on its position in the track, not on the bar's own
+	// length — so the same position is the same colour whatever the fill, and the
+	// same fill is lighter drawn across a wider track.
+	assert.Equal(t, rampIndex(5, 40), rampIndex(5, 40))
+	assert.Less(t, rampIndex(5, 40), rampIndex(5, 20), "a wider track spreads the gradient further right")
+}
+
 func hexOf(c lipgloss.TerminalColor) string {
 	if col, ok := c.(lipgloss.Color); ok {
 		return string(col)
