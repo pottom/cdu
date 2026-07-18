@@ -490,6 +490,10 @@ func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.applyUndo(msg)
 		return m, cmd
 
+	case elevatedDoneMsg:
+		cmd := m.applyElevatedDelete(msg)
+		return m, cmd
+
 	case openedMsg:
 		m.applyOpened(msg)
 		return m, nil
