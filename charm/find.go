@@ -167,6 +167,11 @@ func (m *model) handleFindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openViewer()
 	case "o":
 		return m.openFile()
+	case " ":
+		m.markUnderCursor()
+		m.moveFindCursor(1)
+	case "M":
+		return m.openQueue()
 	case "d":
 		m.askConfirm(actionTrash)
 	case "D":
@@ -269,9 +274,12 @@ func (m *model) viewFindRow(item fs.Item, selected bool) string {
 	plain := icon + sizeText + " " + pathText
 	if selected {
 		if m.width < 2 {
-			return m.st.accent.Render("▌")
+			return m.listSelMarker(item)
 		}
-		return m.st.accent.Render("▌") + m.st.selected.Render(clipTo(plain, m.width-1))
+		return m.listSelMarker(item) + m.st.selected.Render(clipTo(plain, m.width-1))
+	}
+	if m.markOverlay(item) {
+		return m.markedListRow(plain)
 	}
 	if 1+runewidth.StringWidth(plain) > m.width {
 		return m.st.fileName.Render(clipTo(" "+plain, m.width))
