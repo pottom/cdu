@@ -198,9 +198,11 @@ func TestAFailedDeleteDoesNotRefreshTheGauge(t *testing.T) {
 	m := benchModel(4)
 	m.ui.getter = &fakeGetter{size: 1000, free: 400}
 
+	// A non-permission failure: a permission one now opens the elevation modal
+	// instead of just reporting, which is its own test.
 	cmd := m.applyDelete(deleteDoneMsg{
 		item: m.rows[0], parent: m.currentDir, act: actionDelete,
-		err: os.ErrPermission,
+		err: os.ErrClosed,
 	})
 	assert.Nil(t, cmd)
 	assert.True(t, m.statusIsError)

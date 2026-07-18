@@ -145,7 +145,14 @@ func (m *model) viewTypeToConfirm() string {
 		typed += strings.Repeat("_", remaining)
 	}
 
-	label := m.st.danger.Render("this path is protected — type " + confirmWord + " to confirm")
+	// The reason to slow down differs: a protected path is one you might have reached
+	// by accident, an elevated delete is one root itself will carry out. Both ask for
+	// the word; each says why.
+	reason := "this path is protected"
+	if c.elevated {
+		reason = "this runs as root and cannot be undone"
+	}
+	label := m.st.danger.Render(reason + " — type " + confirmWord + " to confirm")
 	field := m.st.dirName.Render(typed)
 	return label + "\n" + field
 }

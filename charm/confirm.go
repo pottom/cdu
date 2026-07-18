@@ -38,6 +38,13 @@ type confirmState struct {
 	batch  []fs.Item
 	act    action
 
+	// elevated means this modal is the second offer, after an ordinary delete was
+	// refused for lack of permission: confirming it removes the item with sudo,
+	// permanently. It always requires typing — it is destructive and usually a system
+	// path — and it never trashes, because the trash is per-user and a root file has
+	// no business in it.
+	elevated bool
+
 	// confirmFocused is false on entry: the destructive button is never what a
 	// reflexive Enter lands on.
 	confirmFocused bool
@@ -355,6 +362,12 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.scr = m.confirmFrom
+		if c.elevated {
+			item, parent := c.item, c.parent
+			m.confirm = nil
+			cmd := m.runElevatedDelete(item, parent)
+			return m, cmd
+		}
 		act, batch := c.act, c.batch
 		m.confirm = nil
 		if len(batch) > 0 {
@@ -419,6 +432,14 @@ func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
 		m.batchFail++
 		if !batch {
 			m.pending = nil
+			// A single delete refused for lack of permission is the one failure worth
+			// offering a way past: the item needs root, so offer to remove it with
+			// elevated privileges rather than just reporting the wall. (A batch reports
+			// its failures in the summary; elevating mid-run, item by item, is not worth
+			// the tangle.)
+			if os.IsPermission(msg.err) {
+				return m.offerElevation(msg.item, msg.parent)
+			}
 			m.status, m.statusIsError = deleteErrorText(msg), true
 			return nil
 		}
@@ -635,9 +656,13 @@ func (m *model) viewModal() string {
 		lines = append(lines,
 			modalLine{text: m.st.dim.Render(middleTruncate(c.item.GetPath(), width)), dropAt: 2})
 	}
+	consequence := modalConsequence(c.act)
+	if c.elevated {
+		consequence = "→ runs sudo rm · gone for good · frees the space · this cannot be undone"
+	}
 	lines = append(lines,
 		modalLine{text: "", dropAt: 1},
-		modalLine{text: m.st.pct.Render(modalConsequence(c.act)), dropAt: 4},
+		modalLine{text: m.st.pct.Render(consequence), dropAt: 4},
 	)
 
 	if c.requireTyping {
@@ -655,6 +680,9 @@ func (m *model) viewModal() string {
 }
 
 func modalTitle(c *confirmState) string {
+	if c.elevated {
+		return "Remove this with elevated privileges?"
+	}
 	if len(c.batch) > 0 {
 		n := len(c.batch)
 		noun := itemNoun(n)
