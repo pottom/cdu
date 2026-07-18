@@ -81,6 +81,12 @@ type model struct {
 	topDir     fs.Item
 	currentDir fs.Item
 
+	// landOnPath is the path to put the cursor on once the next scan lands, used when
+	// ascending above the scan root: the parent is rescanned, and the cursor returns
+	// to the directory it came out of. Empty for an ordinary scan, which opens at the
+	// top of its list.
+	landOnPath string
+
 	// dev is the volume the scan root lives on. Nil until it resolves, and nil
 	// forever if it cannot be resolved — the disk line is decoration, so its
 	// absence must never hold up the interface.
@@ -419,6 +425,21 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.topDir = msg.dir
 		m.enterDir(msg.dir)
 		m.scr = screenBrowse
+		if m.landOnPath != "" {
+			// Ascended above the old root: put the cursor back on the directory we came
+			// out of, which is now one row among the parent's children.
+			for i, r := range m.rows {
+				if r.GetPath() == m.landOnPath {
+					m.cursor = i
+					break
+				}
+			}
+			m.clampCursor()
+			m.landOnPath = ""
+			// The scan root moved, so its volume — and the header's disk gauge — may
+			// have too.
+			return m, deviceCmd(m.ui)
+		}
 		return m, nil
 
 	case scanErrMsg:
@@ -564,9 +585,11 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgdown":
 		m.moveCursor(m.visibleRows())
 	case "right", "l", "enter":
-		m.descend()
+		cmd := m.descend()
+		return m, cmd
 	case keyLeft, "h", keyBackspace:
-		m.ascend()
+		cmd := m.ascend()
+		return m, cmd
 	default:
 		return m.handleBrowseAction(msg)
 	}
@@ -606,7 +629,10 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		// Space queues the row for a batch delete and steps down, so a run of rows is
 		// marked by holding it — the whole reason marking beats deleting one at a time.
-		m.toggleMark(m.selected())
+		// The ../ row is not a child and cannot be queued; space there only steps down.
+		if !m.isParentRow(m.selected()) {
+			m.toggleMark(m.selected())
+		}
 		m.moveCursor(1)
 	case "M":
 		return m.openQueue()
@@ -623,28 +649,41 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) descend() {
+func (m *model) descend() tea.Cmd {
 	item := m.selected()
-	if item == nil || !item.IsDir() {
-		return
+	if item == nil {
+		return nil
+	}
+	// → on the ../ row goes up, not in: it is the parent, and entering it is the one
+	// move it stands for.
+	if m.isParentRow(item) {
+		return m.ascend()
+	}
+	if !item.IsDir() {
+		return nil
 	}
 	m.enterDir(item)
+	return nil
 }
 
-func (m *model) ascend() {
+func (m *model) ascend() tea.Cmd {
 	if m.currentDir == nil {
-		return
+		return nil
 	}
 	parent := m.currentDir.GetParent()
 	if parent == nil {
-		// At the top of the tree. If cdu was started with -d, the device list is
-		// where this scan came from, so it is what "back" means — the same rule gdu
+		// At the top of the scanned tree. If cdu was started with -d, the device list
+		// is where this scan came from, so it is what "back" means — the same rule gdu
 		// follows, and the reason the list needs no key of its own.
 		if m.disks != nil {
 			m.scr = screenDisks
 			m.status, m.statusIsError = "", false
+			return nil
 		}
-		return
+		// Otherwise "up" means the directory above the scan root, which is not in the
+		// tree — so it is scanned, one level up. This is how you walk out of a scan
+		// you rooted too deep without restarting cdu.
+		return m.ascendOnDisk()
 	}
 	child := m.currentDir
 	m.enterDir(parent)
@@ -656,6 +695,43 @@ func (m *model) ascend() {
 		}
 	}
 	m.clampCursor()
+	return nil
+}
+
+// canAscendOnDisk reports whether ← would leave the scanned tree and walk the
+// parent on disk: we are at the scan root, not in -d's device list, the scan came
+// from a path rather than a file, and that path has a parent to climb to.
+func (m *model) canAscendOnDisk() bool {
+	if m.currentDir == nil || m.currentDir.GetParent() != nil || m.disks != nil || m.ui.scanPath == "" {
+		return false
+	}
+	p := m.currentDir.GetPath()
+	return filepath.Dir(p) != p
+}
+
+// ascendOnDisk rescans the directory above the scan root, so navigation can leave
+// the subtree cdu was started in. It is a fresh scan one level up — the parent is
+// not in the tree to walk into — and it lands the cursor on the old root, so where
+// you came from is where the eye already is.
+func (m *model) ascendOnDisk() tea.Cmd {
+	if m.ui.scanPath == "" {
+		// A saved scan opened with -f: there is no path on disk to walk.
+		m.status, m.statusIsError = "this view was read from a file; there is no parent to scan", true
+		return nil
+	}
+	current := m.currentDir.GetPath()
+	parent := filepath.Dir(current)
+	if parent == current {
+		m.status, m.statusIsError = "already at the top of the filesystem", true
+		return nil
+	}
+
+	// Land on the old root once the parent's listing is up, and walk the parent with
+	// a fresh hard-link ledger, the way any new scan starts.
+	m.landOnPath = current
+	m.ui.scanPath = parent
+	m.ui.linkedItems = make(fs.HardLinkedItems, 10)
+	return m.startScan()
 }
 
 // enterDir materialises a directory's children and resets the selection. The
@@ -684,9 +760,28 @@ func (m *model) enterDir(dir fs.Item) {
 			return m.rows[i].IsDir() && !m.rows[j].IsDir()
 		})
 	}
-	m.filtering, m.filter, m.filtered = false, "", nil
+	// A ../ row leads the list whenever there is a parent in the tree, added after
+	// the sort so it never sinks into it. It is the real parent item — → enters it
+	// and the cursor can rest on it — but it is not a child: it carries no bar and
+	// cannot be deleted or marked. The cursor opens on the first real row, not on
+	// the way out.
 	m.cursor = 0
+	if dir.GetParent() != nil {
+		m.rows = append([]fs.Item{dir.GetParent()}, m.rows...)
+		if len(m.rows) > 1 {
+			m.cursor = 1
+		}
+	}
+	m.filtering, m.filter, m.filtered = false, "", nil
 	m.offset = 0
+}
+
+// isParentRow reports whether an item is the ../ row — the current directory's
+// parent, shown at the head of the list. It is a real directory but not one of the
+// current directory's children, so every action that treats the list as children
+// (delete, mark, the usage bar) has to let it out.
+func (m *model) isParentRow(item fs.Item) bool {
+	return item != nil && m.currentDir != nil && item == m.currentDir.GetParent()
 }
 
 // items is the list the cursor and window move over: the filtered subset when a

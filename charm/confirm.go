@@ -120,6 +120,11 @@ func (m *model) askConfirm(act action) {
 	if item == nil || parent == nil {
 		return
 	}
+	// The ../ row is the parent, not a child: it is a way out of the directory, not
+	// a thing in it, so it cannot be deleted or emptied.
+	if m.isParentRow(item) {
+		return
+	}
 
 	// --no-delete is a promise, so the keys are inert and say so. Silently doing
 	// nothing would read as a broken interface.

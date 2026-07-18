@@ -517,11 +517,60 @@ func (m *model) viewList() string {
 // viewEntry is one list entry: the data row, and beneath it the usage bar when
 // there is width for it.
 func (m *model) viewEntry(item fs.Item, selected bool, total int64) string {
+	if m.isParentRow(item) {
+		row := m.viewParentRow(selected)
+		if m.linesPerEntry() == 1 {
+			return row
+		}
+		// A blank second line keeps the entry two rows tall like every other, so the
+		// viewport's line maths — which counts a fixed lines-per-entry — still holds.
+		return row + "\n" + m.viewParentBar(selected)
+	}
 	row := m.viewRow(item, selected, total)
 	if m.linesPerEntry() == 1 {
 		return row
 	}
 	return row + "\n" + m.viewBar(item, selected, total)
+}
+
+// viewParentRow draws the ../ row at the head of a listing: the columns of an
+// ordinary row, but with a dash where a size would be and no bar — it is a way out
+// of the directory, not a measured thing in it.
+func (m *model) viewParentRow(selected bool) string {
+	icon := ""
+	if m.width >= minWidthForIcon {
+		icon = markerDir + " "
+	}
+	sizeText := padLeft("—", sizeColWidth)
+
+	pctText := ""
+	if m.width >= minWidthForPct {
+		pctText = padLeft("", pctColWidth)
+	}
+
+	const fixedCells = 2 // gutter + the gap between size and name
+	nameWidth := max(m.width-runewidth.StringWidth(icon)-sizeColWidth-runewidth.StringWidth(pctText)-fixedCells, minNameWidth)
+	nameText := runewidth.FillRight(runewidth.Truncate("..", nameWidth, "…"), nameWidth)
+
+	plain := icon + sizeText + " " + nameText + pctText
+	if selected {
+		return m.viewSelectedRow(plain, icon+sizeText+" ", nameText, pctText, false, false)
+	}
+	return " " + m.st.accent.Render(icon) +
+		m.st.dim.Render(sizeText) + " " +
+		m.st.dirName.Render(nameText) +
+		m.st.pct.Render(pctText)
+}
+
+// viewParentBar is the ../ row's empty second line: just the gutter, so a two-line
+// entry stays two lines without drawing a usage bar for a directory that has no
+// share of the one being shown.
+func (m *model) viewParentBar(selected bool) string {
+	gutter := " "
+	if selected {
+		gutter = m.st.accent.Render("▌")
+	}
+	return gutter + strings.Repeat(" ", max(m.width-1, 0))
 }
 
 // viewBar draws the gradient bar under an entry, aligned with the name column —
@@ -925,6 +974,12 @@ func hintsWidth(keys []keyHint) int {
 func (m *model) browseFooterKeys() []keyHint {
 	keys := make([]keyHint, 0, len(browseKeys)+3)
 	for _, k := range browseKeys {
+		// At the scan root, ← does not go back within the tree — there is nowhere back
+		// to go — it scans the parent on disk. The hint says "up" so that is not a
+		// surprise.
+		if k.key == "←" && m.canAscendOnDisk() {
+			k.label = "up"
+		}
 		keys = append(keys, k)
 		if k.key != "d" {
 			continue

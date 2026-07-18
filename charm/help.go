@@ -34,7 +34,7 @@ var helpGroups = []helpGroup{
 	{"Navigate", []helpEntry{
 		{"↑ ↓  k j", "move"},
 		{"→ ↵  l", "enter directory"},
-		{"← h", "go to parent"},
+		{"← h", "go to parent — at the root, scan the one above it"},
 		{"g G", "jump to top / bottom"},
 		{"pgup pgdn", "page"},
 		{"/", "filter this directory (fuzzy, live)"},
