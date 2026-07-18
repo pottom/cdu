@@ -62,7 +62,12 @@ func newStyles(t *theme.Theme, useColors bool) styles {
 		}
 	}
 	return styles{
-		dirName:  lipgloss.NewStyle().Foreground(lg(t.Dir)),
+		// A directory is bold as well as brighter: the colour difference between
+		// dir and text is a shade, easy to miss, and bold is a second cue that
+		// reads at a glance and survives mono. With the trailing / and the ▸ marker
+		// that is four ways a folder is told from a file, and the no-colour path was
+		// already bolding it — this just matches, in colour too.
+		dirName:  lipgloss.NewStyle().Foreground(lg(t.Dir)).Bold(true),
 		fileName: lipgloss.NewStyle().Foreground(lg(t.Text)),
 		selected: lipgloss.NewStyle().
 			Foreground(lg(t.Selected)).
