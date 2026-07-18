@@ -172,6 +172,9 @@ type model struct {
 	deleteAct       action
 	batchTotal      int
 	batchFail       int
+	// elevateCandidates are the items in a batch that a plain delete could not remove
+	// for want of permission; once the run is done they are offered to one sudo pass.
+	elevateCandidates []fs.Item
 
 	// status is the last thing that happened, shown in the footer until the next
 	// keystroke. A destructive action that reports nothing is indistinguishable

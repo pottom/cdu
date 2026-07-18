@@ -18,19 +18,22 @@ func Cached() bool {
 	return exec.Command("sudo", "-n", "true").Run() == nil
 }
 
-// RemoveCmd is the command that removes path with elevated privileges, ready to be
-// run by tea.ExecProcess. It is `sudo rm -rf`, which covers a file or a whole
-// directory.
+// RemoveCmd is the command that removes every path with elevated privileges, ready
+// to be run by tea.ExecProcess. It is one `sudo rm -rf` over all of them, so a whole
+// marked set costs a single prompt rather than one each; -rf covers a file or a
+// directory alike.
 //
 // When notice is non-empty it is printed on the terminal just before sudo runs, so
 // the handoff — the moment the TUI steps aside — reads as intentional rather than as
-// the interface vanishing. The path is always a positional argument, never spliced
+// the interface vanishing. The paths are always positional arguments, never spliced
 // into the little shell script, so no filename can break out of it.
-func RemoveCmd(path, notice string) *exec.Cmd {
+func RemoveCmd(paths []string, notice string) *exec.Cmd {
 	if notice == "" {
-		return exec.Command("sudo", "rm", "-rf", "--", path)
+		return exec.Command("sudo", append([]string{"rm", "-rf", "--"}, paths...)...)
 	}
-	return exec.Command("sh", "-c", `printf '%s\n' "$1"; exec sudo rm -rf -- "$2"`, "sh", notice, path)
+	// $1 is the notice, printed, then shifted away so "$@" is exactly the paths.
+	args := append([]string{"-c", `printf '%s\n' "$1"; shift; exec sudo rm -rf -- "$@"`, "sh", notice}, paths...)
+	return exec.Command("sh", args...)
 }
 
 // Reason explains why an elevated delete is unavailable. On Unix that only happens

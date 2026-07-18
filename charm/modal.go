@@ -47,25 +47,59 @@ func (m *model) boxWidth() int {
 	return max(min(roomy, m.width-modalBorder), 1)
 }
 
-// centreInList places the modal in the space the list occupies, so the header and
-// footer stay put. lipgloss.Place pads to exactly these dimensions, which is what
-// keeps the frame the right height.
+// centreInList lays the modal over the list it was opened from, so the directory
+// you are acting on stays visible above and below the question rather than the whole
+// list blanking out. Only the band the box covers is replaced; the header and footer
+// are added by the caller.
 func (m *model) centreInList(content string) string {
-	// A border costs two columns and the content needs at least one. With less
-	// than that there is no box to draw, and drawing one anyway would overflow.
-	// An empty list area is the honest answer for a two-column terminal — the
-	// modal is unreadable at that size either way, and the frame stays put.
+	height := max(m.visibleLines(), 1)
+
+	// A border costs two columns and the content needs at least one. With less than
+	// that there is no box to draw, and drawing one anyway would overflow — the list
+	// alone is the honest answer for a two-column terminal.
 	if m.width < modalBorder+1 {
-		return padLines("", max(m.visibleLines(), 1))
+		return padLines(m.listBody(), height)
 	}
 
 	box := m.st.modal.Padding(0, m.modalPad()).Width(m.boxWidth()).Render(content)
+	boxLines := strings.Split(box, "\n")
 
-	return lipgloss.Place(
-		max(m.width, 1), max(m.visibleLines(), 1),
-		lipgloss.Center, lipgloss.Center,
-		box,
-	)
+	lines := strings.Split(padLines(m.listBody(), height), "\n")
+	boxW := lipgloss.Width(boxLines[0])
+	left := max((m.width-boxW)/2, 0)
+	top := max((len(lines)-len(boxLines))/2, 0)
+
+	// Each box row replaces one list row, centred on blank: the sides are cleared
+	// rather than composited, since slicing the list line around the box would mean
+	// cutting a styled string mid-escape. The rows the box does not reach keep the
+	// list, which is the point.
+	for i, bl := range boxLines {
+		row := top + i
+		if row >= len(lines) {
+			break
+		}
+		pad := max(m.width-left-lipgloss.Width(bl), 0)
+		lines[row] = strings.Repeat(" ", left) + bl + strings.Repeat(" ", pad)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// listBody is the list behind the modal: the body of whichever screen the modal was
+// opened from, so the backdrop is the directory or the list you were acting on.
+func (m *model) listBody() string {
+	//nolint:exhaustive // every other origin falls through to the browser's list
+	switch m.confirmFrom {
+	case screenTop:
+		return m.viewTopList()
+	case screenDup:
+		return m.viewDupList()
+	case screenFind:
+		return m.viewFindList()
+	case screenQueue:
+		return m.viewQueueList()
+	default:
+		return m.viewList()
+	}
 }
 
 // modalLine is one line of the box, and how readily it can be given up when the
