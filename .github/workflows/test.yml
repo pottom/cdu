@@ -21,6 +21,11 @@ jobs:
       uses: golangci/golangci-lint-action@v9
       with:
         version: v2.11.2
+        # Skip `golangci-lint config verify`, which fetches a JSON schema from
+        # golangci-lint.run to validate .golangci.yml. That network call timed out
+        # and failed the lint job (only on main, where it emails) with a schema-load
+        # error that has nothing to do with the code. The linters themselves still run.
+        verify: false
 
   test:
     strategy:
