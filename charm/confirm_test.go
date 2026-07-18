@@ -229,7 +229,8 @@ func TestUndoHintAppearsOnlyWithSomethingToUndo(t *testing.T) {
 	assert.Contains(t, m.viewFooter(), "undo", "a trashed item makes undo real")
 
 	// Once it has been used, the hint goes again.
-	m.applyUndo(undoDoneMsg{entry: m.lastTrashed.entry, item: m.lastTrashed.item, parent: m.lastTrashed.parent})
+	last := m.lastTrashed[0]
+	m.applyUndo(undoDoneMsg{entry: last.entry, item: last.item, parent: last.parent})
 	assert.NotContains(t, m.viewFooter(), "undo", "nothing left to undo")
 }
 
@@ -291,19 +292,20 @@ func TestUndoRestoresTheTreeAndTheParentSizes(t *testing.T) {
 		item: victim, parent: dir, act: actionTrash,
 		entry: &trash.Entry{OriginalPath: victim.GetPath()},
 	})
-	require.NotNil(t, m.lastTrashed, "a trashed item must arm the undo")
+	require.NotEmpty(t, m.lastTrashed, "a trashed item must arm the undo")
 	require.Less(t, dir.GetUsage(), sizeBefore)
 
+	last := m.lastTrashed[0]
 	m.applyUndo(undoDoneMsg{
-		entry:  m.lastTrashed.entry,
-		item:   m.lastTrashed.item,
-		parent: m.lastTrashed.parent,
+		entry:  last.entry,
+		item:   last.item,
+		parent: last.parent,
 	})
 
 	assert.Equal(t, sizeBefore, dir.GetUsage(), "the parent's size must come all the way back")
 	assert.Equal(t, countBefore, dir.ItemCount, "the parent's item count must come back")
 	assert.Len(t, m.rows, 4, "the row must return to the list")
-	assert.Nil(t, m.lastTrashed, "there is nothing left to undo")
+	assert.Empty(t, m.lastTrashed, "there is nothing left to undo")
 }
 
 // The engine's hard-link ledger records every inode it is shown, so re-running
@@ -335,7 +337,7 @@ func TestRecomputeIsStableAcrossHardLinks(t *testing.T) {
 func TestUndoWithoutATrashedItemSaysSo(t *testing.T) {
 	m := benchModel(3)
 	m.applyDelete(deleteDoneMsg{item: m.rows[0], parent: m.currentDir, act: actionDelete})
-	require.Nil(t, m.lastTrashed)
+	require.Empty(t, m.lastTrashed)
 
 	cmd := m.askUndo()
 	assert.Nil(t, cmd)

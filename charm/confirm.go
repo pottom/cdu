@@ -28,9 +28,14 @@ const (
 )
 
 // confirmState is the pending destructive operation.
+//
+// It is one of two shapes: a single item (item, parent set, batch nil), or a batch
+// of marked items (batch set, item/parent nil). The batch carries no parents
+// because each item is asked for its own — the set spans directories.
 type confirmState struct {
 	item   fs.Item
 	parent fs.Item
+	batch  []fs.Item
 	act    action
 
 	// confirmFocused is false on entry: the destructive button is never what a
@@ -101,7 +106,16 @@ func (m *model) target() (item, parent fs.Item) {
 }
 
 // askConfirm opens the modal for the selected item, or explains why it will not.
+//
+// When something is marked and we are somewhere marks apply — the browser or the
+// queue screen — the whole marked set is what the key acts on instead. The single
+// row is the fallback, not the rule that has to be worked around.
 func (m *model) askConfirm(act action) {
+	if m.markedCount() > 0 && (m.scr == screenBrowse || m.scr == screenQueue) {
+		m.askConfirmBatch(act)
+		return
+	}
+
 	item, parent := m.target()
 	if item == nil || parent == nil {
 		return
@@ -137,6 +151,44 @@ func (m *model) askConfirm(act action) {
 		act:           act,
 		requireTyping: isProtected(item.GetPath()),
 	}
+	m.scr = screenConfirm
+}
+
+// askConfirmBatch opens the modal for the marked set. The set is deduped and, for
+// emptying, filtered to files — so the modal counts and sizes exactly what will be
+// removed, not the raw marks.
+func (m *model) askConfirmBatch(act action) {
+	items := m.effectiveMarks(act)
+	if len(items) == 0 {
+		// The only way here with marks but no effective items is `e` over a set that
+		// is all directories: nothing a truncation can act on.
+		m.status, m.statusIsError = "nothing marked that "+actionGerund(act)+" can act on", true
+		return
+	}
+
+	if m.ui.noDelete {
+		m.status, m.statusIsError = "deletion is disabled (--no-delete)", true
+		return
+	}
+	if m.pending != nil {
+		m.status, m.statusIsError = "still removing "+m.pending.GetName()+"…", true
+		return
+	}
+	if act == actionTrash && !trash.Supported() {
+		m.status, m.statusIsError = "this platform has no trash cdu can use; D deletes permanently", true
+		return
+	}
+
+	requireTyping := false
+	for _, it := range items {
+		if isProtected(it.GetPath()) {
+			requireTyping = true
+			break
+		}
+	}
+
+	m.confirmFrom = m.scr
+	m.confirm = &confirmState{batch: items, act: act, requireTyping: requireTyping}
 	m.scr = screenConfirm
 }
 
@@ -183,13 +235,32 @@ func (m *model) askUndo() tea.Cmd {
 	case !trash.RestoreSupported():
 		m.status, m.statusIsError = "cdu cannot restore from this platform's trash", true
 		return nil
-	case m.lastTrashed == nil:
+	case len(m.lastTrashed) == 0:
 		m.status, m.statusIsError = "nothing to undo — only a trashed item can come back", true
 		return nil
 	}
 
-	m.status, m.statusIsError = "restoring "+filepath.Base(m.lastTrashed.entry.OriginalPath)+"…", false
-	return undoCmd(m.lastTrashed)
+	// A batch is undone the way it was done: one at a time, applyUndo chaining the
+	// rest. Restoring starts from the last item trashed, which reads as the run
+	// rewinding.
+	last := m.lastTrashed[len(m.lastTrashed)-1]
+	if len(m.lastTrashed) == 1 {
+		m.status, m.statusIsError = "restoring "+filepath.Base(last.entry.OriginalPath)+"…", false
+	} else {
+		m.status, m.statusIsError = fmt.Sprintf("restoring %d items…", len(m.lastTrashed)), false
+	}
+	return undoCmd(last)
+}
+
+// popTrashed drops one restored entry from the undo list, matched by the trash
+// entry it came from.
+func (m *model) popTrashed(entry *trash.Entry) {
+	for i, t := range m.lastTrashed {
+		if t.entry == entry {
+			m.lastTrashed = append(m.lastTrashed[:i], m.lastTrashed[i+1:]...)
+			return
+		}
+	}
 }
 
 // applyUndo puts the item back into the tree.
@@ -201,21 +272,23 @@ func (m *model) askUndo() tea.Cmd {
 // so an undo costs no disk I/O at all.
 func (m *model) applyUndo(msg undoDoneMsg) tea.Cmd {
 	name := filepath.Base(msg.entry.OriginalPath)
+	m.popTrashed(msg.entry)
+
 	if msg.err != nil {
 		m.status, m.statusIsError = "could not restore "+name+": "+msg.err.Error(), true
-		return nil
+	} else {
+		msg.parent.AddFile(msg.item)
+		m.recomputeStats()
+		if m.currentDir == msg.parent {
+			m.reloadRows()
+		}
+		m.status, m.statusIsError = name+" restored", false
 	}
 
-	msg.parent.AddFile(msg.item)
-	m.recomputeStats()
-
-	if m.currentDir == msg.parent {
-		m.reloadRows()
+	// More of a batch to put back: restore the next, the mirror of the batch delete.
+	if len(m.lastTrashed) > 0 {
+		return undoCmd(m.lastTrashed[len(m.lastTrashed)-1])
 	}
-
-	m.lastTrashed = nil
-	m.status, m.statusIsError = name+" restored", false
-
 	return deviceCmd(m.ui)
 }
 
@@ -277,7 +350,12 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.scr = m.confirmFrom
+		act, batch := c.act, c.batch
 		m.confirm = nil
+		if len(batch) > 0 {
+			cmd := m.startBatchDelete(batch, act)
+			return m, cmd
+		}
 		m.pending = c.item
 		m.status, m.statusIsError = c.inProgressLabel(), false
 		// The tick is what makes the row spin. Without it the removal would run
@@ -308,42 +386,112 @@ func (m *model) cancelConfirm() {
 
 func (c *confirmState) typedFully() bool { return c.typed == confirmWord }
 
+// startBatchDelete kicks off a batch removal. Items go one at a time — two at once
+// would race to resize a shared parent — so this fires the first and applyDelete
+// chains the rest. A trash starts a fresh undo history; the marks are consumed now,
+// the confirm having already happened.
+func (m *model) startBatchDelete(items []fs.Item, act action) tea.Cmd {
+	if act == actionTrash {
+		m.lastTrashed = nil
+	}
+	m.deleteAct = act
+	m.deleteRemaining = items[1:]
+	m.batchTotal = len(items)
+	m.batchFail = 0
+	m.pending = items[0]
+	m.clearMarks()
+	m.status, m.statusIsError = fmt.Sprintf("%s %d items…", actionGerund(act), len(items)), false
+	return tea.Batch(deleteCmd(items[0].GetParent(), items[0], act), tickCmd())
+}
+
 // applyDelete performs the tree half of a removal, on the render loop, once the
-// filesystem half has come back.
+// filesystem half has come back. When a batch is running it chains the next item
+// before settling anything, and one item it cannot remove never strands the rest.
 func (m *model) applyDelete(msg deleteDoneMsg) tea.Cmd {
-	m.pending = nil
+	batch := m.batchTotal > 0
 
 	if msg.err != nil {
-		m.status, m.statusIsError = deleteErrorText(msg), true
-		return nil
+		m.batchFail++
+		if !batch {
+			m.pending = nil
+			m.status, m.statusIsError = deleteErrorText(msg), true
+			return nil
+		}
+	} else {
+		switch msg.act {
+		case actionTrash, actionDelete:
+			// RemoveFile is the engine's own: it updates the size and item count all the
+			// way up the tree, which is why the tree half is not reimplemented here.
+			msg.parent.RemoveFile(msg.item)
+			m.dropRow(msg.item)
+			m.dropTopFile(msg.item)
+			m.dropDuplicate(msg.item)
+			m.dropFindResult(msg.item)
+		case actionEmpty:
+			msg.parent.RemoveFile(msg.item)
+			msg.parent.AddFile(emptiedFile(msg.item, msg.parent))
+			m.reloadRows()
+		}
+		// Only a trashed item can come back, so this is the one path that arms undo.
+		// A batch appends each item, so undo can put the whole run back.
+		if msg.act == actionTrash {
+			m.lastTrashed = append(m.lastTrashed, &trashed{entry: msg.entry, item: msg.item, parent: msg.parent})
+		}
 	}
 
-	switch msg.act {
-	case actionTrash, actionDelete:
-		// RemoveFile is the engine's own: it updates the size and item count all the
-		// way up the tree, which is why the tree half is not reimplemented here.
-		msg.parent.RemoveFile(msg.item)
-		m.dropRow(msg.item)
-		m.dropTopFile(msg.item)
-		m.dropDuplicate(msg.item)
-		m.dropFindResult(msg.item)
-	case actionEmpty:
-		msg.parent.RemoveFile(msg.item)
-		msg.parent.AddFile(emptiedFile(msg.item, msg.parent))
-		m.reloadRows()
+	// The run is not over: fire the next item before touching the status line, so
+	// the interface never flashes "done" mid-batch.
+	if len(m.deleteRemaining) > 0 {
+		next := m.deleteRemaining[0]
+		m.deleteRemaining = m.deleteRemaining[1:]
+		m.pending = next
+		return tea.Batch(deleteCmd(next.GetParent(), next, m.deleteAct), tickCmd())
 	}
 
-	// Only a trashed item can come back, so this is the one path that arms undo.
-	if msg.act == actionTrash {
-		m.lastTrashed = &trashed{entry: msg.entry, item: msg.item, parent: msg.parent}
+	m.pending = nil
+	if batch {
+		m.status, m.statusIsError = m.batchDoneLabel()
+		m.batchTotal, m.batchFail = 0, 0
+		// A batch run from the queue screen leaves it stale — its items are gone — so
+		// with the marks consumed, land in the browser rather than an empty queue.
+		if m.scr == screenQueue {
+			m.scr = screenBrowse
+		}
+	} else {
+		m.status, m.statusIsError = m.doneLabel(msg), false
 	}
-	m.status, m.statusIsError = m.doneLabel(msg), false
 
 	// The header's disk gauge is now stale — it was read once, at startup. Re-reading
 	// it is what makes the trash's central caveat visible rather than merely stated:
 	// after a permanent delete the gauge drops, and after a trash it does not move,
 	// because the item never left the volume.
 	return deviceCmd(m.ui)
+}
+
+// batchDoneLabel reports a finished batch: how many went, in what way, and how many
+// could not — a run that half-failed must say so, not claim it all worked.
+func (m *model) batchDoneLabel() (string, bool) {
+	ok := m.batchTotal - m.batchFail
+	noun := itemNoun(ok)
+
+	var done string
+	switch m.deleteAct {
+	case actionTrash:
+		done = "moved to the trash"
+	case actionDelete:
+		done = "deleted"
+	case actionEmpty:
+		done = "emptied"
+	}
+
+	if m.batchFail > 0 {
+		return fmt.Sprintf("%d %s %s · %d could not be removed", ok, noun, done, m.batchFail), true
+	}
+	label := fmt.Sprintf("%d %s %s", ok, noun, done)
+	if m.deleteAct == actionTrash && trash.RestoreSupported() {
+		label += " · u to undo"
+	}
+	return label, false
 }
 
 // dropRow removes one entry from the list without rebuilding it, so the cursor
@@ -403,6 +551,20 @@ func deleteErrorText(msg deleteDoneMsg) string {
 	return "could not delete " + msg.item.GetName() + ": " + msg.err.Error()
 }
 
+// actionGerund names an action for a sentence — "emptying can act on". It is only
+// used in the one status line that explains why a batch had nothing to do.
+func actionGerund(act action) string {
+	switch act {
+	case actionTrash:
+		return "trashing"
+	case actionDelete:
+		return "deleting"
+	case actionEmpty:
+		return "emptying"
+	}
+	return ""
+}
+
 func (c *confirmState) inProgressLabel() string {
 	switch c.act {
 	case actionTrash:
@@ -458,13 +620,20 @@ func (m *model) viewModal() string {
 	// "→ goes to the trash · does not free disk…" would cut off the very fact the
 	// line exists to state. The name and the path are identifiers, so they are cut.
 	lines := []modalLine{
-		{text: m.st.danger.Render(modalTitle(c.act)), dropAt: keepAlways},
+		{text: m.st.danger.Render(modalTitle(c)), dropAt: keepAlways},
 		{text: "", dropAt: 1},
 		{text: m.st.dirName.Render(runewidth.Truncate(m.modalSubject(c), width, "…")), dropAt: 3},
-		{text: m.st.dim.Render(middleTruncate(c.item.GetPath(), width)), dropAt: 2},
-		{text: "", dropAt: 1},
-		{text: m.st.pct.Render(modalConsequence(c.act)), dropAt: 4},
 	}
+	// A single item shows its full path; a batch spans directories and has none to
+	// show, so its subject line already carries the count and size instead.
+	if len(c.batch) == 0 {
+		lines = append(lines,
+			modalLine{text: m.st.dim.Render(middleTruncate(c.item.GetPath(), width)), dropAt: 2})
+	}
+	lines = append(lines,
+		modalLine{text: "", dropAt: 1},
+		modalLine{text: m.st.pct.Render(modalConsequence(c.act)), dropAt: 4},
+	)
 
 	if c.requireTyping {
 		lines = append(lines,
@@ -480,8 +649,21 @@ func (m *model) viewModal() string {
 	return m.centreInList(fitModal(lines, m.visibleLines()))
 }
 
-func modalTitle(act action) string {
-	switch act {
+func modalTitle(c *confirmState) string {
+	if len(c.batch) > 0 {
+		n := len(c.batch)
+		noun := itemNoun(n)
+		switch c.act {
+		case actionTrash:
+			return fmt.Sprintf("Move %d %s to the trash?", n, noun)
+		case actionDelete:
+			return fmt.Sprintf("Delete %d %s permanently?", n, noun)
+		case actionEmpty:
+			return fmt.Sprintf("Empty %d %s?", n, noun)
+		}
+		return ""
+	}
+	switch c.act {
 	case actionTrash:
 		return "Move this item to the trash?"
 	case actionDelete:
@@ -494,14 +676,49 @@ func modalTitle(act action) string {
 
 // modalSubject names the thing and says how big it is — and, for a directory, how
 // many items go with it, which is the number people most often turn out not to
-// have expected.
+// have expected. A batch is summed instead: how many folders and files, and the
+// total that would come back.
 func (m *model) modalSubject(c *confirmState) string {
+	if len(c.batch) > 0 {
+		return m.batchSubject(c.batch)
+	}
 	name := c.item.GetName()
 	size := m.ui.formatSize(m.itemSize(c.item))
 	if c.item.IsDir() {
 		return fmt.Sprintf("%s/  —  %s, %s items", name, size, humanCount(c.item.GetItemCount()))
 	}
 	return fmt.Sprintf("%s  —  %s", name, size)
+}
+
+// batchSubject counts the set by kind and sums its size, so the modal says exactly
+// what a set of many things adds up to — the number nobody has in their head.
+func (m *model) batchSubject(items []fs.Item) string {
+	var dirs, files int
+	var total int64
+	for _, it := range items {
+		if it.IsDir() {
+			dirs++
+		} else {
+			files++
+		}
+		total += m.itemSize(it)
+	}
+
+	parts := make([]string, 0, 2)
+	if dirs > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", dirs, plural(dirs, "folder", "folders")))
+	}
+	if files > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", files, plural(files, "file", "files")))
+	}
+	return strings.Join(parts, ", ") + "  —  " + m.ui.formatSize(total)
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // modalConsequence is the whole point of the modal: not "are you sure", but what
