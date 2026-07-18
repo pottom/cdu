@@ -35,9 +35,13 @@ const (
 	// than wrapping or smearing. The bar goes first: it is decoration for the
 	// percentage, and it costs a whole extra line per entry.
 	minWidthForTagline = 92
-	minWidthForBar     = 80
-	minWidthForPct     = 70
-	minWidthForIcon    = 44
+	// The mark tally replaces the tagline while anything is marked, and earns a
+	// lower bar than the tagline it stands in for: it is live state, not decoration,
+	// so it should survive to a narrower terminal than a subtitle would.
+	minWidthForTally = 60
+	minWidthForBar   = 80
+	minWidthForPct   = 70
+	minWidthForIcon  = 44
 
 	// The header's disk line is the first thing to go: it is decoration, and it
 	// costs a row of the list at every size.
@@ -157,6 +161,8 @@ func (m *model) View() string {
 		return m.viewDisks()
 	case screenTop:
 		return m.viewTop()
+	case screenQueue:
+		return m.viewQueue()
 	case screenHelp:
 		return m.viewHelp()
 	case screenHashing:
@@ -371,9 +377,17 @@ func (m *model) viewTitle(wordmark, title string) string {
 }
 
 func (m *model) viewBreadcrumb(wordmark, tagline, path string) string {
+	// While anything is marked the subtitle gives way to the running tally: what is
+	// queued for deletion matters more than a tagline, and the header is where a
+	// queue building up is least likely to be missed.
+	sub, subStyle, subMin := tagline, m.st.dim, minWidthForTagline
+	if tally := m.markTally(); tally != "" {
+		sub, subStyle, subMin = tally, m.st.accent, minWidthForTally
+	}
+
 	left := wordmark
-	if m.width >= minWidthForTagline {
-		left += "  " + tagline
+	if m.width >= subMin {
+		left += "  " + sub
 	}
 
 	const gap = 2
@@ -386,8 +400,8 @@ func (m *model) viewBreadcrumb(wordmark, tagline, path string) string {
 	pad := m.width - runewidth.StringWidth(left) - runewidth.StringWidth(path)
 
 	brand := m.st.accent.Render(wordmark)
-	if m.width >= minWidthForTagline {
-		brand += "  " + m.st.dim.Render(tagline)
+	if m.width >= subMin {
+		brand += "  " + subStyle.Render(sub)
 	}
 	return brand + strings.Repeat(" ", max(pad, 1)) + m.st.size.Render(path)
 }
@@ -405,6 +419,10 @@ func (m *model) headerPath() string {
 	}
 	if m.scr == screenTop {
 		return "largest files" + m.searchScopeSuffix()
+	}
+	if m.scr == screenQueue {
+		return fmt.Sprintf("delete queue · %d %s · %s frees",
+			len(m.queue), itemNoun(len(m.queue)), m.ui.formatSize(m.markedReclaimable()))
 	}
 	if m.scr == screenHelp {
 		return "every key, one screen"
@@ -518,11 +536,14 @@ func (m *model) viewBar(item fs.Item, selected bool, total int64) string {
 	width := max(m.width-indent, 0)
 	bar := m.bar.render(fraction(m.itemSize(item), total), width)
 
-	// The gutter marker is repeated on the bar line so the selection reads as one
-	// block two lines tall rather than two unrelated things.
+	// The gutter marker is repeated on the bar line so the selection — or a mark —
+	// reads as one block two lines tall rather than two unrelated things.
 	gutter := " "
-	if selected {
+	switch {
+	case selected:
 		gutter = m.st.accent.Render("▌")
+	case m.isMarked(item):
+		gutter = m.st.marked.Render(m.markGlyph())
 	}
 	return gutter + strings.Repeat(" ", indent-1) + bar
 }
@@ -601,7 +622,13 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	plain := icon + sizeText + " " + extras + nameText + pctText
 
 	if selected {
-		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored)
+		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored, m.isMarked(item))
+	}
+
+	// A marked row that is not the cursor is drawn as a filled band, so a queue
+	// building up is read at a glance and not from one small tick per row.
+	if m.isMarked(item) {
+		return m.viewMarkedRow(plain, floored)
 	}
 
 	// Floored: the terminal is narrower than the columns' own minimums add up to,
@@ -644,6 +671,23 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		m.st.pct.Render(pctText)
 }
 
+// viewMarkedRow draws a marked, non-cursor row as one filled band a cell wider than
+// the tick alone: the tick in the gutter, then the row painted whole in the marked
+// style. It mirrors viewSelectedRow, minus the filter highlight — a band that stands
+// out is the point, not lighting matched runes within it.
+func (m *model) viewMarkedRow(plain string, floored bool) string {
+	if m.width < 1 {
+		return ""
+	}
+	if m.width < 2 {
+		return m.st.marked.Render(m.markGlyph())
+	}
+	if floored {
+		return m.st.marked.Render(clipTo(m.markGlyph()+plain, m.width))
+	}
+	return m.st.marked.Render(m.markGlyph()) + m.st.marked.MaxWidth(max(m.width-1, 1)).Render(plain)
+}
+
 // viewSelectedRow draws the cursor row. No box-shadow in a terminal: the mock's
 // glow becomes a filled background, a bold name, and a bright marker — the marker
 // being what survives --no-color, NO_COLOR and the mono theme.
@@ -652,11 +696,17 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 // that all carry the selection background so the row stays one block. When the
 // name column has been floored the row no longer adds up to the exact width, so it
 // is clipped whole rather than composed.
-func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored bool) string {
+func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored, marked bool) string {
 	if m.width < 1 {
 		return ""
 	}
+	// A marked cursor row shows the tick in the gutter, not the selection bar: the
+	// filled background already says which row the cursor is on, so the one cell is
+	// better spent saying the row is also queued for deletion.
 	marker := m.st.accent.Render("▌")
+	if marked {
+		marker = m.st.accent.Render(m.markGlyph())
+	}
 	// One column: the marker alone. It is the whole of what the cursor row has to
 	// say at this size, and it is the cue that survives --no-color anyway — there
 	// is no room for it *and* a column of name.
@@ -736,6 +786,15 @@ var (
 	// undoKey appears only when there is something to undo — see browseFooterKeys.
 	// It sits after delete, which is where the eye is after a delete.
 	undoKey = keyHint{key: "u", label: "undo", drop: 3}
+	// markKey and queueKey grow the footer around delete: space marks a row for a
+	// batch delete, M opens the queue of what is marked. queueKey shows only once
+	// there is a queue to open. markKey sheds before trash itself — one down from d,
+	// a step up from ? — so a narrow footer keeps the delete key over the mark hint.
+	markKey  = keyHint{key: "space", label: "mark", drop: 3}
+	queueKey = keyHint{key: "M", label: "queue", drop: 4}
+	// clearKey is the "unmark all" to space's mark-one. It shows only with a
+	// selection to clear, and sheds early — it is a convenience, not a way out.
+	clearKey = keyHint{key: "esc", label: "clear", drop: 4}
 	// The whole footer becomes the menu: while a mode is on, nothing else is worth
 	// saying, and a mode nobody can see is a trap.
 	sortMenuKeys = []keyHint{
@@ -816,6 +875,16 @@ var (
 		{key: "enter", label: "confirm"},
 		{key: "esc", label: "cancel"},
 	}
+	queueKeys = []keyHint{
+		{key: "↑↓", label: "move"},
+		{key: "space", label: "unmark"},
+		{key: "↵", label: "reveal"},
+		{key: "d", label: "trash all", drop: 1},
+		{key: "D", label: "delete all", drop: 2},
+		{key: "?", label: "help", drop: 4},
+		{key: "esc", label: "back"},
+		{key: "q", label: "quit", drop: 4},
+	}
 )
 
 // maxDropLevel is the number of shedding rounds fitKeys will run.
@@ -848,17 +917,23 @@ func hintsWidth(keys []keyHint) int {
 	return width
 }
 
-// browseFooterKeys is the browse hints, with undo shown only when there is
-// something to undo. Advertising a key that would do nothing is the same fault as
-// listing d before deletion existed — the footer promises only what it can keep.
+// browseFooterKeys is the browse hints, grown around the delete key: space to
+// mark always, the queue once something is marked, and undo once something has
+// been trashed. Each appears only when it would do something — the footer promises
+// only what it can keep, the same rule that keeps undo hidden until there is a
+// trashed item to bring back.
 func (m *model) browseFooterKeys() []keyHint {
-	if m.lastTrashed == nil {
-		return browseKeys
-	}
-	keys := make([]keyHint, 0, len(browseKeys)+1)
+	keys := make([]keyHint, 0, len(browseKeys)+3)
 	for _, k := range browseKeys {
 		keys = append(keys, k)
-		if k.key == "d" {
+		if k.key != "d" {
+			continue
+		}
+		keys = append(keys, markKey)
+		if m.markedCount() > 0 {
+			keys = append(keys, queueKey, clearKey)
+		}
+		if len(m.lastTrashed) > 0 {
 			keys = append(keys, undoKey)
 		}
 	}
@@ -881,6 +956,8 @@ func (m *model) viewFooter() string {
 		keys = diskKeys
 	case m.scr == screenTop:
 		keys = topKeys
+	case m.scr == screenQueue:
+		keys = queueKeys
 	case m.scr == screenHelp:
 		keys = helpKeys
 	case m.scr == screenHashing:
@@ -897,39 +974,19 @@ func (m *model) viewFooter() string {
 		keys = colMenuKeys
 	}
 
-	// The sort state and the status line share the right-hand side, and both are
-	// worth less than knowing which keys exist — so the hints get the room first.
-	keys = fitKeys(keys, max(m.width-minRightWidth, 0))
+	right, rightStyle := m.footerRight()
+
+	// The right side is reserved the room it will actually take, never below the
+	// minimum, and the hints shed to leave it. Reserving a fixed minimum instead
+	// dropped a long note — the duplicate explanation — whenever the keys ran wide
+	// enough to collide with it, which is exactly when the note matters.
+	reserve := minRightWidth
+	if w := runewidth.StringWidth(right) + 2; w > reserve {
+		reserve = w
+	}
+	keys = fitKeys(keys, max(m.width-reserve, 0))
 
 	plain, styled := plainKeys(keys), m.renderKeys(keys)
-
-	// The right-hand side is whichever matters more right now: the mode you are in,
-	// then what just happened, then — when neither — how the list is sorted. A
-	// destructive action that reported nothing would be indistinguishable from one
-	// that silently failed.
-	right, rightStyle := "", m.st.dim
-	switch {
-	case m.sortPending:
-		// The keys alone would read as ordinary bindings. Naming the mode is what
-		// tells you the next keystroke means something different from usual.
-		right, rightStyle = "sort by…", m.st.accent
-	case m.colPending:
-		right, rightStyle = "toggle column…", m.st.accent
-	case m.status != "":
-		right = m.status
-		if m.statusIsError {
-			rightStyle = m.st.danger
-		} else {
-			rightStyle = m.st.accent
-		}
-	case m.scr == screenBrowse && m.duplicateNote() != "":
-		// The cursor is on a duplicate. Spell out what the ▲ means, here, where it
-		// can be read — it outranks the sort label, which is always available and
-		// says nothing about this row in particular.
-		right, rightStyle = m.duplicateNote(), m.st.accent
-	case m.scr == screenBrowse:
-		right = m.sortLabel()
-	}
 
 	if m.width < 1 {
 		return ""
@@ -945,6 +1002,34 @@ func (m *model) viewFooter() string {
 		return m.st.dim.Render(runewidth.Truncate(plain, m.width, ""))
 	}
 	return styled + strings.Repeat(" ", gap) + rightStyle.Render(right)
+}
+
+// footerRight is the footer's right-hand side, in order of what matters most now:
+// the menu you are in, then what just happened, then — while browsing — the note
+// about a duplicate under the cursor, and failing all that, how the list is sorted.
+// A destructive action that reported nothing would look the same as one that
+// silently failed, which is why the status outranks the standing labels.
+func (m *model) footerRight() (string, lipgloss.Style) {
+	switch {
+	case m.sortPending:
+		// Naming the mode is what tells you the next keystroke means something other
+		// than usual; the keys alone read as ordinary bindings.
+		return "sort by…", m.st.accent
+	case m.colPending:
+		return "toggle column…", m.st.accent
+	case m.status != "":
+		if m.statusIsError {
+			return m.status, m.st.danger
+		}
+		return m.status, m.st.accent
+	case m.scr == screenBrowse && m.duplicateNote() != "":
+		// The cursor is on a duplicate. Spell out what the mark means here, where it
+		// can be read — it outranks the sort label, which says nothing about this row.
+		return m.duplicateNote(), m.st.accent
+	case m.scr == screenBrowse:
+		return m.sortLabel(), m.st.dim
+	}
+	return "", m.st.dim
 }
 
 // plainKeys is the hints as bare text. It is the version that gets measured and

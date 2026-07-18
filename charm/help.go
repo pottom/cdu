@@ -46,6 +46,8 @@ var helpGroups = []helpGroup{
 		{"e", "empty a file"},
 		{"u", "undo the last trash"},
 		{"r", "rescan"},
+		{"space", "mark for a batch delete"},
+		{"M", "the delete queue — review, then delete the marked set"},
 	}},
 	{"Change the view", []helpEntry{
 		// The second keys are named but not explained: both menus spell their own
@@ -64,7 +66,7 @@ var helpGroups = []helpGroup{
 		{"F", "find duplicate files (reads them)"},
 		{"v", "view a file"},
 		{"?", "this screen"},
-		{"esc", "back — and cancel a running scan"},
+		{"esc", "back — cancel a scan, or clear the marks"},
 		{"q", "quit"},
 	}},
 }

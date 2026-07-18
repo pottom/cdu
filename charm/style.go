@@ -27,11 +27,17 @@ type styles struct {
 	// foreground changes. Under no colour it underlines instead, so the match still
 	// shows against the reversed selection.
 	selectedMatch lipgloss.Style
-	size          lipgloss.Style
-	pct           lipgloss.Style
-	dim           lipgloss.Style
-	accent        lipgloss.Style
-	danger        lipgloss.Style
+	// marked fills a row queued for a batch delete, so which rows are marked reads
+	// as a band at a glance rather than from one small tick. It is a distinct fill
+	// from the cursor's — the focus colours rather than the panel — so a marked row
+	// and the cursor row never look the same. Under no colour it falls back to the
+	// tick alone, since a second reverse-video band would be the cursor's.
+	marked lipgloss.Style
+	size   lipgloss.Style
+	pct    lipgloss.Style
+	dim    lipgloss.Style
+	accent lipgloss.Style
+	danger lipgloss.Style
 
 	modal        lipgloss.Style
 	button       lipgloss.Style
@@ -47,11 +53,14 @@ func newStyles(t *theme.Theme, useColors bool) styles {
 			fileName:      plain,
 			selected:      plain.Reverse(true),
 			selectedMatch: plain.Reverse(true).Underline(true),
-			size:          plain,
-			pct:           plain,
-			dim:           plain,
-			accent:        plain.Bold(true),
-			danger:        plain.Bold(true),
+			// No band without colour — the cursor already owns reverse video, so a
+			// marked row is told apart by its tick, which the gutter draws bold.
+			marked: plain,
+			size:   plain,
+			pct:    plain,
+			dim:    plain,
+			accent: plain.Bold(true),
+			danger: plain.Bold(true),
 
 			modal: plain.Border(lipgloss.RoundedBorder()).Padding(0, modalPadding),
 			// Without colour the focused button is told apart by its brackets and by
@@ -76,6 +85,12 @@ func newStyles(t *theme.Theme, useColors bool) styles {
 		selectedMatch: lipgloss.NewStyle().
 			Foreground(lg(t.Accent)).
 			Background(lg(t.Panel)).
+			Bold(true),
+		// The focused-button recipe — Ink on Dim, contrast-checked — reused as a row
+		// band: a fill that stands out from the list without being the cursor's Panel.
+		marked: lipgloss.NewStyle().
+			Foreground(lg(t.Ink)).
+			Background(lg(t.Dim)).
 			Bold(true),
 		size:   lipgloss.NewStyle().Foreground(lg(t.Size)),
 		pct:    lipgloss.NewStyle().Foreground(lg(t.Dim)),

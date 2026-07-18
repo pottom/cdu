@@ -26,6 +26,9 @@ const (
 	screenViewer
 	screenDisks
 	screenTop
+	// screenQueue is the delete queue: everything marked for removal, so a batch
+	// delete can be looked over before it happens rather than fired blind.
+	screenQueue
 	screenHelp
 	// screenHashing is the spinner while dup.Find reads the candidate files. It is
 	// its own screen, not the scan spinner, because it comes back with a different
@@ -137,9 +140,32 @@ type model struct {
 	// you into the browser when you cancel it.
 	confirmFrom screen
 
-	// lastTrashed is what undo would put back. Only a trashed item can come back,
-	// so a permanent delete leaves this nil — there is simply nothing to restore.
-	lastTrashed *trashed
+	// lastTrashed is what undo would put back, one entry per item of the last trash.
+	// A single delete is a batch of one, so undo has one code path; a batch delete
+	// leaves several, and undo replays them. Only a trashed item can come back, so a
+	// permanent delete leaves this empty — there is nothing to restore.
+	lastTrashed []*trashed
+
+	// marked is the set queued for a batch delete, keyed by item so a mark survives
+	// moving between directories — gdu keys its marks by row and loses them the
+	// moment the list reorders. Empty means the destructive keys act on the cursor
+	// row alone, exactly as before.
+	marked map[fs.Item]bool
+	// queue is the marked set as a flat, biggest-first list for the queue screen. It
+	// is a snapshot taken when the screen opens, like topFiles.
+	queue       []fs.Item
+	queueCursor int
+	queueOffset int
+
+	// deleteRemaining is the tail of a batch delete still to run: removals go one at
+	// a time so two never race to resize the same parent, so the batch is a queue
+	// drained one applyDelete at a time. deleteAct is the action the batch is doing;
+	// batchTotal and batchFail count the run so its end can be reported honestly.
+	// batchTotal is zero for an ordinary single delete, which keeps its own wording.
+	deleteRemaining []fs.Item
+	deleteAct       action
+	batchTotal      int
+	batchFail       int
 
 	// status is the last thing that happened, shown in the footer until the next
 	// keystroke. A destructive action that reports nothing is indistinguishable
@@ -248,6 +274,7 @@ func newModel(ui *UI) *model {
 		bar:     newBarRenderer(&ui.theme, ui.UseColors, ui.noUnicode),
 		blinkOn: true,
 		homeDir: home,
+		marked:  make(map[fs.Item]bool),
 		// Where the modal and the viewer return to when they close. They are set
 		// again on the way in, but the zero value of a screen is screenScanning —
 		// so anything that missed a step would close onto the scan screen, which is
@@ -499,6 +526,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.scr == screenTop {
 		return m.handleTopKey(msg)
 	}
+	if m.scr == screenQueue {
+		return m.handleQueueKey(msg)
+	}
 	if m.scr == screenHashing {
 		return m.handleHashingKey(msg)
 	}
@@ -514,8 +544,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m.handleBrowseKey(msg)
 }
 
-// handleBrowseKey is the browse screen's key table: moving, opening, and the keys
-// that act on the selected item.
+// handleBrowseKey is the browse screen's movement, with everything that acts on
+// the list or the selection handed to handleBrowseAction — two tables rather than
+// one over-long one.
 func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
@@ -536,6 +567,16 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.descend()
 	case keyLeft, "h", keyBackspace:
 		m.ascend()
+	default:
+		return m.handleBrowseAction(msg)
+	}
+	return m, nil
+}
+
+// handleBrowseAction is the keys that change something: delete and undo, the marks
+// and the queue, the other screens, the filter and the two menus.
+func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
 	case "d":
 		m.askConfirm(actionTrash)
 	case "D":
@@ -562,6 +603,18 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.sortPending = true
 	case "t":
 		m.colPending = true
+	case " ":
+		// Space queues the row for a batch delete and steps down, so a run of rows is
+		// marked by holding it — the whole reason marking beats deleting one at a time.
+		m.toggleMark(m.selected())
+		m.moveCursor(1)
+	case "M":
+		return m.openQueue()
+	case keyEscape:
+		// Nothing is deeper than the browser to back out of, so esc here cancels the
+		// selection instead — the whole marked set at once, the way esc drops any
+		// other pending state. With nothing marked it does nothing, quietly.
+		m.unmarkAll()
 	case "a", "B", "c", "m":
 		// gdu binds these directly, and so do we: the t menu exists to make them
 		// discoverable, not to make them harder to reach for anyone who knows them.

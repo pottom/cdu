@@ -33,8 +33,8 @@ func TestHelpCoversEveryFooterKey(t *testing.T) {
 		}
 	}
 
-	all := [][]keyHint{browseKeys, sortMenuKeys, colMenuKeys, scanKeys, confirmKeys, diskKeys, topKeys, helpKeys}
-	all = append(all, []keyHint{undoKey})
+	all := [][]keyHint{browseKeys, sortMenuKeys, colMenuKeys, scanKeys, confirmKeys, diskKeys, topKeys, queueKeys, helpKeys}
+	all = append(all, []keyHint{undoKey, markKey, queueKey})
 
 	for _, table := range all {
 		for _, hint := range table {
