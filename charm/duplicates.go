@@ -211,6 +211,8 @@ func (m *model) handleDupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.revealDup()
 	case "v":
 		return m.openViewer()
+	case "o":
+		return m.openFile()
 	case "d":
 		m.askConfirm(actionTrash)
 	case "D":
