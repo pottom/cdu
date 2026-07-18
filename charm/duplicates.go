@@ -18,12 +18,33 @@ import (
 // that share a size with another, which is most of the cost avoided before it is
 // paid: unique sizes are never opened. It is cancellable with esc, like a scan.
 
-// dupMark is the glyph a duplicated file carries in the browser. A geometric
-// triangle rather than the warning sign ⚠: runewidth measures both as one cell,
-// but ⚠ is in the emoji block and a colour terminal may draw it two cells wide,
-// which would shift the row. The triangle is stable. It renders in the accent,
-// like the rest of a duplicate's name.
-const dupMark = "▲"
+// dupMark is the glyph a duplicated file carries. Two joined squares — two
+// copies — because a shape has to say what it means, and a warning triangle
+// says "danger", not "duplicate". Never an emoji-range glyph like ⚠: runewidth
+// measures it as one cell but a colour terminal may draw it two wide, shifting
+// the row. ⧉ is a stable geometric symbol. It renders in the accent, and it is
+// always followed by words — "⧉ 3 copies" — so it never stands alone to be
+// puzzled over.
+const dupMark = "⧉"
+
+// duplicateGroup returns the group a file belongs to, or nil. It is what lets a
+// browser row show both the mark and the count.
+func (m *model) duplicateGroup(item fs.Item) *dup.Group {
+	if m.dupMarked == nil {
+		return nil
+	}
+	return m.dupMarked[item]
+}
+
+// duplicateTag is the words that ride beside the mark on a duplicated row:
+// "⧉ 3 copies". The mark catches the eye; the words say what it caught.
+func (m *model) duplicateTag(item fs.Item) string {
+	g := m.duplicateGroup(item)
+	if g == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s %d copies", dupMark, len(g.Files))
+}
 
 // dupRow is one line of the duplicate screen: a group header, or a file in one.
 type dupRow struct {

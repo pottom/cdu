@@ -352,19 +352,21 @@ func (m *model) viewBrand() string {
 	return m.viewBreadcrumb(wordmark, "charm disk usage", m.headerPath())
 }
 
-// viewTitle puts the wordmark and a bright title on the left. A title that will
-// not fit keeps its tail — the specific end (the pattern, the directory) matters
-// more than the word "duplicate" it starts with.
+// viewTitle puts the wordmark and a bright title on the left. The title takes
+// the size colour — green — the same colour the browser's breadcrumb has always
+// used for the path, so "where you are" reads the same whichever screen you are
+// on. A title that will not fit keeps its tail: the specific end (the pattern,
+// the directory) matters more than the word "duplicate" it starts with.
 func (m *model) viewTitle(wordmark, title string) string {
 	if title == "" {
 		return m.st.accent.Render(runewidth.Truncate(wordmark, max(m.width, 1), ""))
 	}
 	full := wordmark + "  " + title
 	if runewidth.StringWidth(full) > m.width {
-		return m.st.dirName.Render(runewidth.FillRight(middleTruncate(title, max(m.width, 1)), max(m.width, 1)))
+		return m.st.size.Render(runewidth.FillRight(middleTruncate(title, max(m.width, 1)), max(m.width, 1)))
 	}
 	pad := m.width - runewidth.StringWidth(full)
-	return m.st.accent.Render(wordmark) + "  " + m.st.dirName.Render(title) + strings.Repeat(" ", max(pad, 0))
+	return m.st.accent.Render(wordmark) + "  " + m.st.size.Render(title) + strings.Repeat(" ", max(pad, 0))
 }
 
 func (m *model) viewBreadcrumb(wordmark, tagline, path string) string {
@@ -569,11 +571,12 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	case 'H':
 		name += " ⇉"
 	}
-	// A file the duplicate search matched carries a mark of its own. It is a glyph
-	// too, for the same reason — the colour below is a second cue, not the only
-	// one — so it survives mono and reads for a colourblind eye.
-	if m.isDuplicate(item) {
-		name += " " + dupMark
+	// A file the duplicate search matched carries a mark and, beside it, the words
+	// that explain the mark — "⧉ 3 copies" — so a first-time reader is never left
+	// to guess what the glyph means. The glyph is a second cue on top of the
+	// colour, so the row still reads under mono and to a colourblind eye.
+	if tag := m.duplicateTag(item); tag != "" {
+		name += " " + tag
 	}
 	if removing {
 		// The word, not just the spinner: the state has to survive --no-color and a
