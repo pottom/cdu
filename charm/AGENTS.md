@@ -15,12 +15,16 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `view.go` — `View()`, layout, breakpoints, row rendering.
 - `gradient.go` — the usage bar and its degradation across colour profiles.
 - `confirm.go` — the destructive actions: trash, delete, empty, undo, rescan.
+- `mark.go` — multi-select: the marked set, `space`/`u`, and the danger rendering.
+- `queue.go` — `M`: the delete queue, a reviewable snapshot of the marked set.
+- `elevate.go` — retrying a permission-denied delete through real `sudo`.
 - `modal.go` — the confirmation box, its buttons, and how it sheds lines to fit.
-- `protected.go` — the paths that need the word typed out.
+- `protected.go` (+ `_unix`/`_other`) — the paths that need the word typed out.
 - `sort.go` — the two-key sort (`s` then a field) and the config default.
 - `toggle.go` — the column toggles (`a`/`B`/`c`/`m`) and the `t` menu.
 - `filter.go`, `fuzzy.go` — the `/` fuzzy filter and its match highlighting.
 - `viewer.go` — the `v` file pager, with the binary sniff and the read cap.
+- `open.go` — `o`: open a file in the operating system's default app.
 - `mouse.go` — wheel-scroll and click-to-select, behind `--mouse`.
 - `disks.go`, `diskgroup.go` — `cdu -d`: the device table, grouped by disk.
 - `topfiles.go` — `T`: the largest files anywhere in the scan.
@@ -31,6 +35,9 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `icons.go` — the icon cell: markers by default, Nerd Font glyphs behind `--icons`.
 - `icons_table.go` — **generated** from exa's `icons.rs`; do not hand-edit.
 - `style.go` — the palette and the resolved Lipgloss styles.
+- `themes.go` — `p`: the in-app theme picker, previewing each theme live.
+- `save.go` — folding a tried view into the config through the app's callback.
+- `update.go` — the startup update check, fired as a `tea.Cmd` from `Init`.
 - `util.go` — truncation, padding, formatting.
 
 ## Local Contracts
@@ -162,10 +169,40 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   of single keypresses may delete a protected path.
 - **A disabled key says it is disabled.** `--no-delete` leaves the keys bound and
   reports why nothing happened; a key that silently does nothing reads as a broken
-  interface. The same holds for `u` where the platform cannot restore.
+  interface. The same holds for `U` (undo) where the platform cannot restore.
 - **The modal states the consequence, not just the question.** That trashing does
   not free disk space is the fact people most often do not know, so it is said
   every time.
+
+### Marking, unselect, and the queue
+
+- **`space` marks a row and steps down; the set is keyed by item, not by row.** A
+  mark survives moving between directories and re-sorting — gdu keys marks by row
+  and loses them the moment the list reorders. With nothing marked, the destructive
+  keys act on the cursor row alone, exactly as before.
+- **Marking works on every list, and so does the mark rendering.** The browser, the
+  largest-files (`T`), duplicate (`F`) and find (`f`) screens all mark; each renders
+  its own rows, so a change to how a marked row looks must touch every one of them or
+  it drifts. A marked row's **name is struck through and recoloured `Danger`, and its
+  leading glyph (icon, or the tree branch on the duplicates screen) is `Danger` too**
+  — `markableGlyph` is the one place that agrees on the glyph across the lists. The
+  size and percentage stay their normal colour. No gutter tick: the name and icon
+  carry the mark, so it reads whether or not the cursor is on the row.
+- **`u` unmarks all; `U` is undo.** Clearing a selection is the frequent, casual
+  action, so it takes the easy lower-case key on every list; undo (restore the last
+  trash) is rare and deliberate and takes the shift. Do not swap them back to gdu's
+  `u`-is-undo — neither is destructive if mixed up, and the footer names both. `esc`
+  also clears marks in the browser (nothing deeper to back out of), but not on the
+  sub-screens, where `esc` backs out — which is why `u` exists.
+- **`M` opens the delete queue: a snapshot of the marked set**, shaped like the
+  largest-files screen. `space` there prunes one row (out of both the snapshot and
+  the live set); `u` empties the whole queue; the destructive keys take the set to
+  one batch confirm. The mark overlay is off here — every row is marked by
+  definition, so drawing the band on all of them would be noise.
+- **A permission-denied delete offers elevation** (`internal/elevate`): on
+  `fs.ErrPermission`, the confirm offers to re-run through real `sudo`, cdu never
+  handling the password. A batch collects its permission failures and offers the
+  whole set to one sudo pass at the end.
 
 ### Modes, filter and columns
 
@@ -268,14 +305,16 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - **`F` finds duplicates, and it reads files — the only feature that does.** The
   search runs off the render loop (`internal/dup`), can be cancelled with `esc`
   like a scan, and shares the scan's cancel flag. A duplicated file is marked in
-  the browser with `dupMark` (`▲`) in the accent, and the whole name takes the
-  accent so it stands out of a long list rather than hiding a glyph at the end of
-  a truncated name. `dropDuplicate` dissolves a group once one copy is left — a
-  file is a duplicate of nothing. The mark is a glyph as well as a colour, so it
-  survives mono and a colourblind eye, like the `H`/`!` flags.
-- **`dupMark` is a geometric triangle, not `⚠`.** runewidth measures both as one
-  cell, but `⚠` is in the emoji block and a colour terminal may draw it two cells
-  wide, shifting the row. Never use an emoji-range glyph in a laid-out cell.
+  the browser with `dupMark` (`⧉`) in the accent, followed by the words that
+  explain it (`⧉ 3 copies`), so a first-time reader never has to guess. The whole
+  name takes the accent so it stands out of a long list rather than hiding a glyph
+  at the end of a truncated name. `dropDuplicate` dissolves a group once one copy
+  is left — a file is a duplicate of nothing. The mark is a glyph as well as a
+  colour, so it survives mono and a colourblind eye, like the `H`/`!` flags.
+- **`dupMark` is `⧉` (two joined squares), not `⚠` or `▲`.** It reads as "copies",
+  where a triangle reads as "danger". runewidth measures all three as one cell, but
+  `⚠` is in the emoji block and a colour terminal may draw it two cells wide,
+  shifting the row. Never use an emoji-range glyph in a laid-out cell.
 
 ### Colour and unicode
 
@@ -318,14 +357,16 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 
 Still pointing at `--classic` with an explicit error rather than failing
 silently: `ReadFromStorage` (`--read-from-storage`). The footer advertises only
-bindings that exist — do not list a key before it works, and `u` appears only when
-there is something to undo.
+bindings that exist — do not list a key before it works, and the hints that depend
+on state (`M`/`u` while marked, `U` while there is a trash to undo) appear only then.
 
-Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back, `/` fuzzy filter, `s` sort
-menu, `t` column menu (or direct `a`/`B`/`c`/`m`; `t` then `s` saves the view),
-`v` view file, `d` trash, `D` delete permanently, `e` empty a file, `u` undo the
-last trash, `r` rescan, `f` find (tree-wide), `T` largest files, `F` find
-duplicates, `?` help, `esc` back / cancel a scan.
+Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back (the `../` row goes up too),
+`g`/`G` top/bottom, `/` fuzzy filter, `s` sort menu, `t` column menu (or direct
+`a`/`B`/`c`/`m`; `t` then `s` saves the view), `p` theme picker, `v` view file, `o`
+open in the default app, `space` mark, `M` delete queue, `u` unmark all, `d` trash,
+`D` delete permanently, `e` empty a file, `U` undo the last trash, `r` rescan, `f`
+find (tree-wide), `T` largest files, `F` find duplicates, `?` help, `esc` back /
+cancel a scan / clear marks.
 **`help.go` is the list that has to be right** — add a binding there, or the
 drift test fails.
 
