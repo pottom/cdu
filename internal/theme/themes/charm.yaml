@@ -10,7 +10,6 @@
 
 panel: "#241c34" # the cursor row's bed, and the modal's ground
 text: "#cfc6ef" # an ordinary file name, and the modal's body
-dir: "#e9e3ff" # a directory — brighter than a file
 selected: "#ffffff" # the cursor row's name, drawn on `panel`
 ink: "#ffffff" # foreground on a filled chip: the focused and destructive buttons
 dim: "#7d739e" # percentages, key hints, unfocused buttons

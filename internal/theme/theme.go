@@ -72,8 +72,6 @@ type Theme struct {
 	Panel Color `yaml:"panel,omitempty"`
 	// Text is an ordinary file name and the modal's body.
 	Text Color `yaml:"text,omitempty"`
-	// Dir is a directory name, which reads brighter than a file.
-	Dir Color `yaml:"dir,omitempty"`
 	// Selected is the cursor row's name, drawn on Panel. It is a token of its own
 	// rather than "white" because on a light theme it is dark.
 	Selected Color `yaml:"selected,omitempty"`
