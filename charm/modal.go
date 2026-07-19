@@ -62,17 +62,23 @@ func (m *model) centreInList(content string) string {
 	}
 
 	box := m.st.modal.Padding(0, m.modalPad()).Width(m.boxWidth()).Render(content)
+	return m.overlayBox(box, m.listBody())
+}
+
+// overlayBox lays a rendered box over a backdrop, centred, and returns exactly
+// visibleLines lines. Each box row replaces one backdrop row, centred on blank: the
+// sides are cleared rather than composited, since slicing the backdrop line around
+// the box would mean cutting a styled string mid-escape. The rows the box does not
+// reach keep the backdrop, which is the point of an overlay.
+func (m *model) overlayBox(box, backdrop string) string {
+	height := max(m.visibleLines(), 1)
+	lines := strings.Split(padLines(backdrop, height), "\n")
 	boxLines := strings.Split(box, "\n")
 
-	lines := strings.Split(padLines(m.listBody(), height), "\n")
 	boxW := lipgloss.Width(boxLines[0])
 	left := max((m.width-boxW)/2, 0)
 	top := max((len(lines)-len(boxLines))/2, 0)
 
-	// Each box row replaces one list row, centred on blank: the sides are cleared
-	// rather than composited, since slicing the list line around the box would mean
-	// cutting a styled string mid-escape. The rows the box does not reach keep the
-	// list, which is the point.
 	for i, bl := range boxLines {
 		row := top + i
 		if row >= len(lines) {

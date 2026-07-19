@@ -26,7 +26,7 @@ func (m *model) applyTheme(th *theme.Theme) {
 func (m *model) openThemePicker() (tea.Model, tea.Cmd) {
 	m.themeNames = theme.Names()
 	m.themeOriginal = m.ui.theme
-	m.themeCursor, m.themeOffset = 0, 0
+	m.themeCursor = 0
 	for i, n := range m.themeNames {
 		if n == m.ui.theme.Name {
 			m.themeCursor = i
@@ -68,66 +68,59 @@ func (m *model) handleThemeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // moveThemeCursor moves the cursor and applies the theme it lands on, so the whole
-// screen previews it at once.
+// screen previews it at once. The box holds every theme at once, so there is nothing
+// to scroll.
 func (m *model) moveThemeCursor(delta int) {
 	if len(m.themeNames) == 0 {
 		return
 	}
 	m.themeCursor = min(max(m.themeCursor+delta, 0), len(m.themeNames)-1)
-
-	height := max(m.visibleLines(), 1)
-	m.themeOffset = min(m.themeOffset, m.themeCursor)
-	if m.themeCursor >= m.themeOffset+height {
-		m.themeOffset = m.themeCursor - height + 1
-	}
-	m.themeOffset = min(max(m.themeOffset, 0), max(len(m.themeNames)-height, 0))
-
 	if th, ok := theme.Preset(m.themeNames[m.themeCursor]); ok {
 		m.applyTheme(&th)
 	}
 }
 
-func (m *model) viewThemeList() string {
-	lines := m.visibleLines()
-	if len(m.themeNames) == 0 {
-		return padLines(m.st.dim.Render(clipTo("  no themes", m.width)), lines)
-	}
-
-	end := min(m.themeOffset+lines, len(m.themeNames))
-	rows := make([]string, 0, lines)
-	for i := m.themeOffset; i < end; i++ {
-		rows = append(rows, m.viewThemeRow(m.themeNames[i], i == m.themeCursor))
-	}
-	return padLines(joinLines(rows), lines)
-}
-
-// viewThemeRow shows a theme's name in its own accent — a swatch you can compare
-// down the list without selecting each. The cursor row is the live preview: the
-// whole screen is already wearing that theme, so it takes the selection band.
-func (m *model) viewThemeRow(name string, selected bool) string {
-	if m.width < 1 {
-		return ""
-	}
-	if selected {
-		return m.st.accent.Render("▌") + m.st.selected.Render(cell(" "+name, max(m.width-1, 1)))
-	}
-
-	th, ok := theme.Preset(name)
-	style := lipgloss.NewStyle().Bold(true)
-	if ok && !th.Plain {
-		style = style.Foreground(lg(th.Accent))
-	}
-	return "  " + style.Render(cell(name, max(m.width-2, 1)))
-}
-
+// viewThemes floats the picker as a box over the browser, so a theme is previewed
+// on the real screen — your own directory, header and bars — not on a list of names.
+// The header and footer are the browser's, re-themed live like everything behind the
+// box.
 func (m *model) viewThemes() string {
 	parts := make([]string, 0, 3)
 	if m.headerHeight() > 0 {
 		parts = append(parts, m.viewHeader())
 	}
-	parts = append(parts, m.viewThemeList())
+	box := m.st.modal.Padding(0, m.modalPad()).Render(m.themePickerContent())
+	parts = append(parts, m.overlayBox(box, m.viewList()))
 	if m.footerHeight() > 0 {
 		parts = append(parts, m.viewFooter())
 	}
 	return joinLines(parts)
+}
+
+// themePickerContent is the inside of the box: a heading, the themes each in their
+// own accent so the list doubles as a set of swatches, and a one-line reminder of
+// the keys. The cursor is a caret rather than a filled band, since the box already
+// sits on the panel colour and a second fill would not show.
+func (m *model) themePickerContent() string {
+	lines := make([]string, 0, len(m.themeNames)+3)
+	lines = append(lines, m.st.accent.Render("Theme"), "")
+	for i, name := range m.themeNames {
+		lines = append(lines, m.themeBoxRow(name, i == m.themeCursor))
+	}
+	lines = append(lines, "", m.st.dim.Render("↑↓ preview · ↵ keep · esc cancel"))
+	return joinLines(lines)
+}
+
+func (m *model) themeBoxRow(name string, selected bool) string {
+	th, ok := theme.Preset(name)
+	style := lipgloss.NewStyle().Bold(true)
+	if ok && !th.Plain {
+		style = style.Foreground(lg(th.Accent))
+	}
+
+	marker := "  "
+	if selected {
+		marker = m.st.accent.Render("▸ ")
+	}
+	return marker + style.Render(name)
 }
