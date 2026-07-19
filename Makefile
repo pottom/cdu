@@ -1,95 +1,49 @@
-NAME := gdu
-MAJOR_VER := v5
-PACKAGE := github.com/dundee/$(NAME)/$(MAJOR_VER)
-CMD_GDU := cmd/gdu
-VERSION := $(shell git describe --tags 2>/dev/null)
-NAMEVER := $(NAME)-$(subst v,,$(VERSION))
-DATE := $(shell date +'%Y-%m-%d')
-GOBIN := go
-GOFLAGS ?= -buildmode=pie -trimpath -mod=readonly -modcacherw -pgo=default.pgo
-GOFLAGS_STATIC ?= -trimpath -mod=readonly -modcacherw -pgo=default.pgo
-LDFLAGS := -s -w -extldflags '-static' \
-	-X '$(PACKAGE)/build.Version=$(VERSION)' \
-	-X '$(PACKAGE)/build.User=$(shell id -u -n)' \
-	-X '$(PACKAGE)/build.Time=$(shell LC_ALL=en_US.UTF-8 date)'
-TAR := tar
-ifeq ($(shell uname -s),Darwin)
-	TAR := gtar # brew install gnu-tar
+NAME := cdu
+PACKAGE := github.com/pottom/cdu
+CMD := cmd/cdu
+
+# cdu carries its own version, tagged cdu-vX.Y.Z so it is never confused with the gdu
+# release tags git inherited from the fork (v1.0.0 … v5.36.1). --match keeps git
+# describe on cdu's own tags; --always falls back to a short commit on an untagged dev
+# tree; the "cdu-" prefix is stripped so the stamp reads vX.Y.Z, not cdu-vX.Y.Z.
+RAW_VERSION := $(shell git describe --tags --match 'cdu-v*' 2>/dev/null)
+VERSION := $(subst cdu-,,$(RAW_VERSION))
+# Until the first cdu-v tag is cut, an untagged tree is the version under development:
+# a clean "-dev" string rather than a bare commit, so the header reads sensibly. Once
+# cdu-v0.1.0 exists, git describe wins and the real version shows.
+ifeq ($(VERSION),)
+VERSION := v0.1.0-dev
 endif
 
-all: clean tarball build-all build-docker man clean-uncompressed-dist shasums
+# GDU_VERSION is the upstream gdu the engine is synced to. build/cdu.go holds the same
+# default; setting it here too keeps the Makefile the single source when a build stamps
+# it, and it is bumped on each upstream sync alongside build/cdu.go.
+GDU_VERSION := 5.36.1
+
+DATE := $(shell date +'%Y-%m-%d')
+GOBIN := go
+
+# CGO is off everywhere (static, portable binaries); the PGO profile is the engine's,
+# inherited from gdu and still valid since cdu reuses pkg/analyze unchanged.
+GOFLAGS ?= -trimpath -mod=readonly -pgo=default.pgo
+LDFLAGS := -s -w \
+	-X '$(PACKAGE)/build.Version=$(VERSION)' \
+	-X '$(PACKAGE)/build.GduVersion=$(GDU_VERSION)' \
+	-X '$(PACKAGE)/build.User=$(shell id -u -n)' \
+	-X '$(PACKAGE)/build.Time=$(shell LC_ALL=en_US.UTF-8 date)'
+
+# Release builds — the cross-compiled matrix, archives, checksums, signing, SBOM and
+# the container image — are GoReleaser's job, not this file's. The Makefile keeps the
+# development targets: build, run, test, lint, man, bench.
+
+# build puts the runnable, stripped binary at the repo root — where cdu is run from
+# during development, never dist/ or a temp dir.
+build:
+	@echo "Version: $(VERSION) (gdu $(GDU_VERSION))"
+	GOFLAGS="$(GOFLAGS)" CGO_ENABLED=0 $(GOBIN) build -ldflags="$(LDFLAGS)" -o ./$(NAME) ./$(CMD)
 
 run:
-	go run $(PACKAGE)/$(CMD_GDU)
-
-vendor: go.mod go.sum
-	go mod vendor
-
-tarball: vendor
-	-mkdir dist
-	$(TAR) czf dist/$(NAMEVER).tgz --transform "s,^,$(NAMEVER)/," --exclude dist --exclude test_dir --exclude coverage.txt *
-
-build:
-	@echo "Version: " $(VERSION)
-	mkdir -p dist
-	GOFLAGS="$(GOFLAGS)" CGO_ENABLED=0 $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/$(NAME) $(PACKAGE)/$(CMD_GDU)
-
-build-static:
-	@echo "Version: " $(VERSION)
-	mkdir -p dist
-	GOFLAGS="$(GOFLAGS_STATIC)" CGO_ENABLED=0 $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/$(NAME) $(PACKAGE)/$(CMD_GDU)
-
-build-docker:
-	@echo "Version: " $(VERSION)
-	docker build . --tag ghcr.io/dundee/gdu:$(VERSION)
-
-build-all:
-	@echo "Version: " $(VERSION)
-	-mkdir dist
-	CGO_ENABLED=0 gox \
-		-os="darwin" \
-		-arch="amd64 arm64" \
-		-output="dist/gdu_{{.OS}}_{{.Arch}}" \
-		-ldflags="$(LDFLAGS)" \
-		$(PACKAGE)/$(CMD_GDU)
-
-	CGO_ENABLED=0 gox \
-		-os="windows" \
-		-arch="amd64" \
-		-output="dist/gdu_{{.OS}}_{{.Arch}}" \
-		-ldflags="$(LDFLAGS)" \
-		$(PACKAGE)/$(CMD_GDU)
-
-	CGO_ENABLED=0 gox \
-		-os="linux freebsd netbsd openbsd" \
-		-output="dist/gdu_{{.OS}}_{{.Arch}}" \
-		-ldflags="$(LDFLAGS)" \
-		$(PACKAGE)/$(CMD_GDU)
-
-	GOFLAGS="$(GOFLAGS)" CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_linux_amd64 $(PACKAGE)/$(CMD_GDU)
-	GOFLAGS="$(GOFLAGS_STATIC)" CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_linux_amd64_static $(PACKAGE)/$(CMD_GDU)
-
-	CGO_ENABLED=0 GOOS=linux GOARM=5 GOARCH=arm $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_linux_armv5l $(PACKAGE)/$(CMD_GDU)
-	CGO_ENABLED=0 GOOS=linux GOARM=6 GOARCH=arm $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_linux_armv6l $(PACKAGE)/$(CMD_GDU)
-	CGO_ENABLED=0 GOOS=linux GOARM=7 GOARCH=arm $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_linux_armv7l $(PACKAGE)/$(CMD_GDU)
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_linux_arm64 $(PACKAGE)/$(CMD_GDU)
-	CGO_ENABLED=0 GOOS=android GOARCH=arm64 $(GOBIN) build -ldflags="$(LDFLAGS)" -o dist/gdu_android_arm64 $(PACKAGE)/$(CMD_GDU)
-
-	cd dist; for file in gdu_linux_* gdu_darwin_* gdu_netbsd_* gdu_openbsd_* gdu_freebsd_* gdu_android_*; do tar czf $$file.tgz $$file; done
-	cd dist; for file in gdu_windows_*; do zip $$file.zip $$file; done
-
-gdu.1: gdu.1.md
-	sed 's/{{date}}/$(DATE)/g' gdu.1.md > gdu.1.date.md
-	pandoc gdu.1.date.md -s -t man > gdu.1
-	rm -f gdu.1.date.md
-
-man: gdu.1
-	cp gdu.1 dist
-	cd dist; tar czf gdu.1.tgz gdu.1
-
-show-man:
-	sed 's/{{date}}/$(DATE)/g' gdu.1.md > gdu.1.date.md
-	pandoc gdu.1.date.md -s -t man | man -l -
+	$(GOBIN) run ./$(CMD)
 
 test:
 	gotestsum
@@ -100,96 +54,33 @@ coverage:
 coverage-html: coverage
 	$(GOBIN) tool cover -html=coverage.txt
 
-gobench:
-	$(GOBIN) test -bench=. $(PACKAGE)/pkg/analyze
-
-heap-profile:
-	$(GOBIN) tool pprof -web http://localhost:6060/debug/pprof/heap
-
-pgo:
-	wget -O cpu.pprof http://localhost:6060/debug/pprof/profile?seconds=30
-	$(GOBIN) tool pprof -proto cpu.pprof default.pgo > merged.pprof
-	mv merged.pprof default.pgo
-
-trace:
-	wget -O trace.out http://localhost:6060/debug/pprof/trace?seconds=30
-	gotraceui ./trace.out
-
-profile:
-	wget -O cpu.pprof http://localhost:6060/debug/pprof/profile?seconds=30
-	$(GOBIN) tool pprof -web cpu.pprof
-
-benchmark:
-	sudo cpupower frequency-set -g performance
-	hyperfine --export-markdown=docs/benchmarks/bench-cold.md \
-		--prepare 'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches' \
-		--ignore-failure \
-		'dua ~' 'duc index ~' 'ncdu -0 -o /dev/null ~' \
-		'diskus ~' 'du -hs ~' 'dust -d0 ~' 'pdu ~' \
-		'gdu -npc ~' \
-		'gdu -npc --db=tmp.badger ~' \
-		'gdu -npc --db=tmp.db ~' \
-		'GOMAXPROCS=80 gdu -npc ~'
-	hyperfine --export-markdown=docs/benchmarks/bench-warm.md \
-		--warmup 5 \
-		--ignore-failure \
-		'dua ~' 'duc index ~' 'ncdu -0 -o /dev/null ~' \
-		'diskus ~' 'du -hs ~' 'dust -d0 ~' 'pdu ~' \
-		'gdu -npc ~' \
-		'gdu -npc --db=tmp.badger ~' \
-		'gdu -npc --db=tmp.db ~' \
-		'GOMAXPROCS=100 gdu -npc ~'
-	hyperfine -M 1 --export-markdown=docs/benchmarks/bench-cold-big.md \
-		--prepare 'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches' \
-		--ignore-failure \
-		'dua /' \
-		'diskus /' 'dust -d0 /' \
-		'gdu -npc /' 'GOMAXPROCS=5 gdu -npc /'
-	sudo cpupower frequency-set -g schedutil
-
-benchmark-parameter-scan:
-	sudo cpupower frequency-set -g performance
-	hyperfine --export-markdown=docs/benchmarks/bench-cold-param-scan.md \
-		--prepare 'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches' \
-		--ignore-failure \
-		-P procs 1 120 -D 10 \
-		'GOMAXPROCS={procs} gdu -npc ~'
-	hyperfine --export-markdown=docs/benchmarks/bench-warm-param-scan.md \
-		--warmup 5 \
-		--ignore-failure \
- 		-P procs 90 200 -D 10 \
-		'GOMAXPROCS={procs} gdu -npc ~'
-	hyperfine -M 1 --export-markdown=docs/benchmarks/bench-cold-big-param-scan.md \
-		--prepare 'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches' \
-		--ignore-failure \
-		-P procs 1 10 \
-		'GOMAXPROCS={procs} gdu -npc /'
-	sudo cpupower frequency-set -g schedutil
-
 lint:
 	golangci-lint run -c .golangci.yml
 
+# gobench guards the scan engine's performance; it is pkg/analyze's own benchmark,
+# untouched by the fork.
+gobench:
+	$(GOBIN) test -bench=. ./pkg/analyze
+
+$(NAME).1: $(NAME).1.md
+	sed 's/{{date}}/$(DATE)/g' $(NAME).1.md > $(NAME).1.date.md
+	pandoc $(NAME).1.date.md -s -t man > $(NAME).1
+	rm -f $(NAME).1.date.md
+
+man: $(NAME).1
+
+show-man:
+	sed 's/{{date}}/$(DATE)/g' $(NAME).1.md > $(NAME).1.date.md
+	pandoc $(NAME).1.date.md -s -t man | man -l -
+	rm -f $(NAME).1.date.md
+
 clean:
 	$(GOBIN) mod tidy
-	-rm coverage.txt
-	-rm -r test_dir
-	-rm -r vendor
-	-rm -r dist
-
-clean-uncompressed-dist:
-	find dist -type f -not -name '*.tgz' -not -name '*.zip' -delete
-
-shasums:
-	cd dist; sha256sum * > sha256sums.txt
-	cd dist; gpg --sign --armor --detach-sign sha256sums.txt
-
-release:
-	gh release create -t "gdu $(VERSION)" $(VERSION) ./dist/*
+	-rm -f coverage.txt $(NAME).1 ./$(NAME)
+	-rm -r test_dir dist
 
 install-dev-dependencies:
 	$(GOBIN) install gotest.tools/gotestsum@latest
-	$(GOBIN) install github.com/mitchellh/gox@latest
-	$(GOBIN) install honnef.co/go/gotraceui/cmd/gotraceui@latest
 	$(GOBIN) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.2
 
-.PHONY: run build build-static build-all test gobench benchmark coverage coverage-html clean clean-uncompressed-dist man show-man release dev-build
+.PHONY: build run test coverage coverage-html lint gobench man show-man clean install-dev-dependencies
