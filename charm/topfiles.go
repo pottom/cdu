@@ -215,7 +215,7 @@ func (m *model) viewTopRow(item fs.Item, selected bool) string {
 		}
 		if m.markOverlay(item) {
 			return m.selMarker(item) + m.st.selected.Render(icon+sizeText+" "+dirText) +
-				m.st.selected.Strikethrough(true).Render(nameText)
+				m.markedNameStyle(&m.st.selected).Render(nameText)
 		}
 		return m.selMarker(item) + m.st.selected.Render(clipTo(plain, m.width-1))
 	}

@@ -117,14 +117,22 @@ func (m *model) selMarker(item fs.Item) string {
 	return m.st.accent.Render("▌")
 }
 
-// strikeMarked strikes a style through when its row is marked, so a marked name
-// reads as struck out — bound for deletion — under any colour and through the
-// selection band, which is what makes the cursor row's mark state unmistakable.
+// strikeMarked gives a row's name the marked treatment when the row is marked, and
+// leaves it alone otherwise.
 func (m *model) strikeMarked(item fs.Item, style *lipgloss.Style) lipgloss.Style {
 	if m.markOverlay(item) {
-		return style.Strikethrough(true)
+		return m.markedNameStyle(style)
 	}
 	return *style
+}
+
+// markedNameStyle is the name of a row bound for deletion: struck through and in the
+// danger colour, so it reads as marked both by the line through it and by a colour
+// unlike an unmarked row's — the recolour is the difference the user could not see
+// when only the strike changed. Kept in one place so the cursor row (on the panel
+// background) and the plain rows agree. Under no colour the strike alone carries it.
+func (m *model) markedNameStyle(base *lipgloss.Style) lipgloss.Style {
+	return base.Strikethrough(true).Foreground(lg(m.ui.theme.Danger))
 }
 
 // isAncestorMarked reports whether a marked directory contains this item. Such an

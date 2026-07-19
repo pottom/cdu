@@ -405,7 +405,7 @@ func (m *model) viewDupFile(r *dupRow, selected bool) string {
 		}
 		if m.markOverlay(r.file) {
 			return m.selMarker(r.file) + m.st.selected.Render(branch+sizeText+" ") +
-				m.st.selected.Strikethrough(true).Render(pathText)
+				m.markedNameStyle(&m.st.selected).Render(pathText)
 		}
 		return m.selMarker(r.file) + m.st.selected.Render(clipTo(plain, m.width-1))
 	}

@@ -770,7 +770,7 @@ func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored
 	name := sel.Render(nameText)
 	switch {
 	case marked:
-		name = sel.Strikethrough(true).Render(nameText)
+		name = m.markedNameStyle(&sel).Render(nameText)
 	case m.filter != "":
 		name = highlightMatch(nameText, m.filter, &sel, &m.st.selectedMatch)
 	}

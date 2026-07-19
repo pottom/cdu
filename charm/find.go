@@ -278,7 +278,7 @@ func (m *model) viewFindRow(item fs.Item, selected bool) string {
 		}
 		if m.markOverlay(item) {
 			return m.selMarker(item) + m.st.selected.Render(icon+sizeText+" ") +
-				m.st.selected.Strikethrough(true).Render(pathText)
+				m.markedNameStyle(&m.st.selected).Render(pathText)
 		}
 		return m.selMarker(item) + m.st.selected.Render(clipTo(plain, m.width-1))
 	}

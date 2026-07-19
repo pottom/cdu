@@ -247,7 +247,7 @@ func TestAMarkedRowIsStruckThrough(t *testing.T) {
 
 	// The strike combines into one SGR with the name's colour, so match the exact
 	// opening lipgloss emits for a struck fileName rather than a bare \x1b[9m.
-	strike := m.st.fileName.Strikethrough(true).Render("z")
+	strike := m.markedNameStyle(&m.st.fileName).Render("z")
 	open := strike[:strings.Index(strike, "z")]
 
 	assert.NotEqual(t, plain, marked, "a marked row must look different from an unmarked one")
@@ -267,7 +267,7 @@ func TestAMarkedCursorRowIsStillStruckThrough(t *testing.T) {
 	m.marked[m.rows[0]] = true
 	row := m.viewRow(m.rows[0], true, m.rowScale()) // selected AND marked
 
-	strike := m.st.selected.Strikethrough(true).Render("z")
+	strike := m.markedNameStyle(&m.st.selected).Render("z")
 	open := strike[:strings.Index(strike, "z")]
 
 	assert.Contains(t, row, open, "the cursor row's name is struck when marked")
