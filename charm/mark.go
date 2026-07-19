@@ -3,6 +3,7 @@ package charm
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -17,16 +18,6 @@ import (
 // The destructive keys then act on the whole set when it is non-empty, and on the
 // cursor row alone when it is empty. That keeps the one-key delete anyone already
 // knows, and adds the batch without a mode to enter or leave.
-
-// markGlyph is the ✗ drawn in a marked row's gutter — an X, because the mark is a
-// mark for deletion — or its ASCII stand-in when unicode is off. It measures one
-// cell either way, so a marked row stays the exact width an unmarked one is.
-func (m *model) markGlyph() string {
-	if m.ui.noUnicode {
-		return "x"
-	}
-	return "✗"
-}
 
 func (m *model) isMarked(item fs.Item) bool {
 	return item != nil && m.marked[item]
@@ -96,41 +87,22 @@ func (m *model) markOverlay(item fs.Item) bool {
 	return m.scr != screenQueue && m.isMarked(item)
 }
 
-// markGutter is the one-cell head of an ordinary row: a red ✗ when the row is marked
-// for deletion, otherwise blank. Always one cell, so a marked row lines up with an
-// unmarked one.
-func (m *model) markGutter(item fs.Item) string {
-	if m.markOverlay(item) {
-		return m.st.danger.Render(m.markGlyph())
-	}
-	return " "
+// renderMarkedName renders a row's name column when the row is marked: the visible
+// name struck through and in the danger colour, then its trailing padding left plain,
+// so the strike covers the text and not the empty rest of the column. base carries
+// whatever the row already has — the file colour, or the selection background on the
+// cursor row — so the padding still belongs to the row.
+func (m *model) renderMarkedName(nameText string, base *lipgloss.Style) string {
+	name := strings.TrimRight(nameText, " ")
+	pad := nameText[len(name):]
+	return m.markedNameStyle(base).Render(name) + base.Render(pad)
 }
 
-// selMarker is the cursor row's gutter: the red ✗ when the row is also marked (the
-// selection band already shows the cursor), otherwise the accent bar. A marked
-// cursor row therefore reads as marked from the ✗ and the struck name, not from a
-// background it shares with the plain cursor.
-func (m *model) selMarker(item fs.Item) string {
-	if m.markOverlay(item) {
-		return m.st.danger.Render(m.markGlyph())
-	}
-	return m.st.accent.Render("▌")
-}
-
-// strikeMarked gives a row's name the marked treatment when the row is marked, and
-// leaves it alone otherwise.
-func (m *model) strikeMarked(item fs.Item, style *lipgloss.Style) lipgloss.Style {
-	if m.markOverlay(item) {
-		return m.markedNameStyle(style)
-	}
-	return *style
-}
-
-// markedNameStyle is the name of a row bound for deletion: struck through and in the
-// danger colour, so it reads as marked both by the line through it and by a colour
-// unlike an unmarked row's — the recolour is the difference the user could not see
-// when only the strike changed. Kept in one place so the cursor row (on the panel
-// background) and the plain rows agree. Under no colour the strike alone carries it.
+// markedNameStyle is the style of a marked name: struck through and in the danger
+// colour, so it reads as bound for deletion both by the line through it and by a
+// colour unlike an unmarked row's. Kept in one place so the cursor row (over the
+// selection background) and the plain rows agree; under no colour the strike alone
+// carries it.
 func (m *model) markedNameStyle(base *lipgloss.Style) lipgloss.Style {
 	return base.Strikethrough(true).Foreground(lg(m.ui.theme.Danger))
 }
@@ -184,7 +156,7 @@ func (m *model) markTally() string {
 	if n == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s %d %s · %s", m.markGlyph(), n, itemNoun(n), m.ui.formatSize(m.markedReclaimable()))
+	return fmt.Sprintf("%d marked · %s", n, m.ui.formatSize(m.markedReclaimable()))
 }
 
 // itemNoun is "item" or "items" — the count-dependent word the tally, the queue

@@ -400,21 +400,26 @@ func (m *model) viewDupFile(r *dupRow, selected bool) string {
 
 	plain := branch + sizeText + " " + pathText
 	if selected {
+		bar := m.st.accent.Render("▌")
 		if m.width < 2 {
-			return m.selMarker(r.file)
+			return bar
 		}
 		if m.markOverlay(r.file) {
-			return m.selMarker(r.file) + m.st.selected.Render(branch+sizeText+" ") +
-				m.markedNameStyle(&m.st.selected).Render(pathText)
+			return bar + m.st.selected.Render(branch+sizeText+" ") +
+				m.renderMarkedName(pathText, &m.st.selected)
 		}
-		return m.selMarker(r.file) + m.st.selected.Render(clipTo(plain, m.width-1))
+		return bar + m.st.selected.Render(clipTo(plain, m.width-1))
 	}
 	if 1+runewidth.StringWidth(plain) > m.width {
 		return m.st.fileName.Render(clipTo(" "+plain, m.width))
 	}
-	return m.markGutter(r.file) + m.st.dim.Render(branch) +
+	nameRender := m.st.fileName.Render(pathText)
+	if m.markOverlay(r.file) {
+		nameRender = m.renderMarkedName(pathText, &m.st.fileName)
+	}
+	return " " + m.st.dim.Render(branch) +
 		m.st.size.Render(sizeText) + " " +
-		m.strikeMarked(r.file, &m.st.fileName).Render(pathText)
+		nameRender
 }
 
 func (m *model) viewDup() string {
