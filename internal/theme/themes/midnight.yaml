@@ -12,7 +12,6 @@
 
 panel: "#14263a"
 text: "#b8cfe3"
-dir: "#e3f2ff"
 selected: "#ffffff"
 ink: "#04121e" # dark: it lands on cyan and rose, which are light
 dim: "#64809a"

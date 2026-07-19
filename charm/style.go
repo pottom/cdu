@@ -62,11 +62,11 @@ func newStyles(t *theme.Theme, useColors bool) styles {
 		}
 	}
 	return styles{
-		// A directory takes the accent and bold: the dir/text shade difference was
+		// A directory takes the accent and bold: the old dir/text shade difference was
 		// too subtle to catch at a glance, so a folder now wears the theme's loudest
 		// colour and weight. With the ▸ marker and the trailing / that is more than
-		// enough to tell it from a file. The Dir token is unused as a result — kept
-		// in the themes for now; a later pass folds it back in or drops it.
+		// enough to tell it from a file. The old Dir token this replaced has been
+		// dropped — accent does its job now, and a token nothing reads is a trap.
 		dirName:  lipgloss.NewStyle().Foreground(lg(t.Accent)).Bold(true),
 		fileName: lipgloss.NewStyle().Foreground(lg(t.Text)),
 		selected: lipgloss.NewStyle().

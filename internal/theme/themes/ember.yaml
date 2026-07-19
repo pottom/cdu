@@ -9,7 +9,6 @@
 
 panel: "#2b1d16"
 text: "#f0d8c4"
-dir: "#fff0e2"
 selected: "#fffaf5"
 # Dark ink: ember's danger and dim are both light enough that the white the
 # cursor row uses would have sat on them at about 3:1.
