@@ -61,6 +61,10 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          # --skip=validate: the git tag is cdu-vX.Y.Z, but GORELEASER_CURRENT_TAG
+          # hands GoReleaser the stripped vX.Y.Z, so its check that a vX.Y.Z tag points
+          # at HEAD would fail on a scheme it cannot otherwise support (monorepo
+          # tag_prefix is Pro-only). The checkout is clean, so nothing else is lost.
+          args: release --clean --skip=validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
