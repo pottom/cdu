@@ -34,7 +34,12 @@ Syncing a new upstream release:
     bash scripts/rename-upstream.sh
     git commit -am "chore: rename for vX.Y.Z"
     git checkout -b chore/sync-gdu-vX.Y.Z main
-    git merge upstream-cdu                                 # then open a PR
+    git merge upstream-cdu
+    # bump GduVersion in build/cdu.go to X.Y.Z — its single source
+    git commit -am "chore: sync gdu engine to X.Y.Z"       # then open a PR
+
+`watch-upstream.yml` does all of this automatically; the steps above are the manual
+fallback. The `GduVersion` bump is the only version edit — there is no other copy.
 
 Conflicts should only ever appear in the conflict surface listed in the root
 AGENTS.md. A conflict anywhere else means someone edited an upstream-owned file.

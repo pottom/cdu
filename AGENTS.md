@@ -107,11 +107,12 @@ on every upstream sync. Editing them turns cheap merges into expensive ones.
 No child AGENTS.md is placed inside them: we do not maintain that code, and any
 doc written there would be describing a tree that gets overwritten from upstream.
 
-**cdu-owned — ours to change freely.** New directories, so they cannot conflict:
+**cdu-owned — ours to change freely.** New files, so they cannot conflict:
 
-    charm/  internal/theme/  internal/config/  internal/trash/
-    internal/dup/  internal/selfupdate/  build/cdu.go  scripts/  docs/
-    AGENTS.md  NOTICE
+    charm/  internal/theme/  internal/config/  internal/trash/  internal/dup/
+    internal/elevate/  internal/updater/  internal/selfupdate/  build/cdu.go
+    scripts/  docs/  AGENTS.md  NOTICE
+    .goreleaser.yaml  install.sh  install.ps1
 
 `build/cdu.go`'s `GduVersion` is the single source of truth for which gdu release the
 engine is at — it is compiled in as the default, surfaced by `cdu --version` as the
@@ -122,7 +123,7 @@ The upstream watcher bumps that one line in a sync PR; update it only there.
 upstream files we must modify, and they are the only ones:
 
     go.mod  go.sum  cmd/cdu/main.go  cmd/cdu/app/app.go  cmd/cdu/app/app_test.go
-    Makefile  .github/workflows/*  README.md  cdu.1.md
+    Makefile  Dockerfile  .github/workflows/*  README.md  cdu.1.md
 
 `app_test.go` is on the list because cdu changes the interactive default: gdu's
 "Gui" tests inject a mocked tview application, so `runApp` sets `Classic: true` to
@@ -161,7 +162,18 @@ cost — justify it, and keep the diff minimal and localized.
   `feat/ fix/ chore/ docs/ refactor/ test/ perf/ ci/ build/` + a short slug.
   Conventional Commits (`type: summary`) drive the changelog.
 - **Versioning.** SemVer `vX.Y.Z` for cdu's own changes, with the embedded engine
-  recorded as build metadata: `cdu v0.3.1+gdu5.36.1`.
+  recorded as build metadata: `cdu v0.3.1+gdu5.36.1`. cdu's version is compiled in
+  from a `cdu-vX.Y.Z` git tag — prefixed so it is never confused with the `v1.0.0`…
+  `v5.36.1` tags inherited from gdu, and so the release workflow triggers on cdu's
+  tags alone.
+- **Releasing.** GoReleaser owns it, on a pushed `cdu-vX.Y.Z` tag:
+  `.github/workflows/release.yml` builds the cross-compiled matrix, archives,
+  `sha256sums.txt`, SBOMs, keyless-cosign signatures, the GitHub release, and the
+  `ghcr.io/pottom/cdu` container image. The Makefile only does dev builds. Because
+  GoReleaser (OSS) needs a plain semver tag, the workflow strips `cdu-` into
+  `GORELEASER_CURRENT_TAG`, so the published release is `vX.Y.Z`. `install.sh` /
+  `install.ps1` and `cdu update` consume those release assets. Cut a tag only when
+  the tree is release-ready — it fires the pipeline immediately.
 
 ## Work Guidance
 
@@ -176,7 +188,7 @@ cost — justify it, and keep the diff minimal and localized.
 
 ## Verification
 
-    make test            # go test ./... — 699 tests inherited from gdu, keep green
+    make test            # go test ./... — gdu's inherited tests plus cdu's, all green
     make lint            # golangci-lint, config .golangci.yml
     go build ./...
     make gobench         # scan throughput, must not regress
@@ -191,8 +203,9 @@ on the same tree; the bytes must match.
 - `internal/config/AGENTS.md` — where the config lives, and inheriting gdu's.
 - `internal/dup/AGENTS.md` — finding byte-identical files (the one content read).
 - `internal/trash/AGENTS.md` — recoverable deletes, per OS, CGO-free.
+- `internal/elevate/AGENTS.md` — retrying a permission-denied delete with sudo.
+- `internal/updater/AGENTS.md` — the read-only startup check for a newer release.
+- `internal/selfupdate/AGENTS.md` — `cdu update`: fetch and swap in that release.
+- `build/AGENTS.md` — the version stamp vars, and the upstream file never to touch.
 - `docs/AGENTS.md` — the brief, design mocks, and architecture/decision records.
 - `scripts/AGENTS.md` — the upstream rename and sync tooling.
-
-Directories from the Ownership section that do not exist yet
-(`internal/selfupdate/`) get their own child doc in the PR that creates them.
