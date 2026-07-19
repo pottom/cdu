@@ -37,9 +37,13 @@ const (
 const (
 	markerDir  = "▸"
 	markerFile = "·"
+	// markerBack is the ../ row's icon: a left arrow, because the row is the way
+	// back out of the directory, the same direction ← / h take.
+	markerBack = "←"
 	// Under --no-unicode even those go, matching gdu's scope for the flag.
 	asciiMarkerDir  = ">"
 	asciiMarkerFile = " "
+	asciiMarkerBack = "<"
 )
 
 // The device list's own icon cell. A physical disk and a volume on it are
