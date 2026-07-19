@@ -235,6 +235,11 @@ type model struct {
 	// homeDir is the user's home, resolved once, for shortening title paths to ~.
 	homeDir string
 
+	// latestVersion is the tag of a newer release, once the startup check finds one.
+	// Empty means no newer version is known — not yet checked, up to date, or the
+	// check could not run — and the header shows no update mark.
+	latestVersion string
+
 	// helpFrom is the screen ? was pressed on, and the one it returns to. The
 	// help is reachable from all of them.
 	helpFrom   screen
@@ -311,19 +316,23 @@ func newModel(ui *UI) *model {
 }
 
 func (m *model) Init() tea.Cmd {
+	// The update check rides along with whatever the interface opens on: it runs off
+	// the render loop and lands a message later, so it never delays the first frame.
+	update := m.checkUpdate()
+
 	// -d opens on the device list: there is no path to walk until one is picked.
 	if m.ui.showDisks {
 		m.scr = screenScanning
-		return tea.Batch(m.spinner.Tick, disksCmd(m.ui))
+		return tea.Batch(m.spinner.Tick, disksCmd(m.ui), update)
 	}
 	// A saved scan opened with -f is already in memory; there is nothing to walk.
 	if m.ui.topDir != nil {
 		m.enterDir(m.ui.topDir)
 		m.topDir = m.ui.topDir
 		m.scr = screenBrowse
-		return deviceCmd(m.ui)
+		return tea.Batch(deviceCmd(m.ui), update)
 	}
-	return tea.Batch(m.startScan(), deviceCmd(m.ui))
+	return tea.Batch(m.startScan(), deviceCmd(m.ui), update)
 }
 
 // deviceCmd resolves the volume the scan root sits on. It runs off the render
@@ -510,6 +519,11 @@ func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case openedMsg:
 		m.applyOpened(msg)
+		return m, nil
+
+	case updateAvailableMsg:
+		// The background check found a newer release; the header now shows it.
+		m.latestVersion = msg.tag
 		return m, nil
 	}
 	return m, nil

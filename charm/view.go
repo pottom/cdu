@@ -349,8 +349,6 @@ func (m *model) viewHeader() string {
 // path is middle-truncated rather than cut: a breadcrumb whose root has been
 // chopped off tells you nothing about where you are.
 func (m *model) viewBrand() string {
-	const wordmark = "cdu ✦"
-
 	// Everywhere but the browser, the header path is a *title* — what you are
 	// looking at, "duplicate files under ~/Work" — so it leads, right after the
 	// wordmark, bright, tagline dropped. On the browser it is a *breadcrumb* —
@@ -358,29 +356,54 @@ func (m *model) viewBrand() string {
 	// The theme picker floats over the browser, so it wears the browser's header —
 	// its breadcrumb and mark tally — not a title of its own.
 	if m.scr != screenBrowse && m.scr != screenThemes {
-		return m.viewTitle(wordmark, m.headerPath())
+		return m.viewTitle(m.headerPath())
 	}
-	return m.viewBreadcrumb(wordmark, "charm disk usage", m.headerPath())
+	return m.viewBreadcrumb("charm disk usage", m.headerPath())
 }
 
-// viewTitle puts the wordmark and a bright title on the left. The title takes
-// the size colour — green — the same colour the browser's breadcrumb has always
-// used for the path, so "where you are" reads the same whichever screen you are
-// on. A title that will not fit keeps its tail: the specific end (the pattern,
-// the directory) matters more than the word "duplicate" it starts with.
-func (m *model) viewTitle(wordmark, title string) string {
-	if title == "" {
-		return m.st.accent.Render(runewidth.Truncate(wordmark, max(m.width, 1), ""))
+// brand is the header's left edge: the wordmark, this build's version, and — once a
+// background check has found one — a yellow ↯ and the newer version. It returns the
+// plain text (for width maths) and the styled text (for drawing), the way the footer
+// keeps plainKeys and renderKeys in step.
+func (m *model) brand() (plain, styled string) {
+	const wordmark = "cdu ✦"
+	plain, styled = wordmark, m.st.accent.Render(wordmark)
+	if m.ui.version != "" {
+		plain += " " + m.ui.version
+		styled += " " + m.st.dim.Render(m.ui.version)
 	}
-	full := wordmark + "  " + title
+	if m.latestVersion != "" {
+		mark := "↯" + m.latestVersion
+		plain += " " + mark
+		styled += " " + m.st.update.Render(mark)
+	}
+	return plain, styled
+}
+
+// viewTitle puts the brand and a bright title on the left. The title takes the size
+// colour — green — the same colour the browser's breadcrumb has always used for the
+// path, so "where you are" reads the same whichever screen you are on. A title that
+// will not fit keeps its tail: the specific end (the pattern, the directory) matters
+// more than the word "duplicate" it starts with.
+func (m *model) viewTitle(title string) string {
+	brandPlain, brandStyled := m.brand()
+	if title == "" {
+		if runewidth.StringWidth(brandPlain) <= m.width {
+			return brandStyled
+		}
+		return m.st.accent.Render(runewidth.Truncate(brandPlain, max(m.width, 1), ""))
+	}
+	full := brandPlain + "  " + title
 	if runewidth.StringWidth(full) > m.width {
 		return m.st.size.Render(runewidth.FillRight(middleTruncate(title, max(m.width, 1)), max(m.width, 1)))
 	}
 	pad := m.width - runewidth.StringWidth(full)
-	return m.st.accent.Render(wordmark) + "  " + m.st.size.Render(title) + strings.Repeat(" ", max(pad, 0))
+	return brandStyled + "  " + m.st.size.Render(title) + strings.Repeat(" ", max(pad, 0))
 }
 
-func (m *model) viewBreadcrumb(wordmark, tagline, path string) string {
+func (m *model) viewBreadcrumb(tagline, path string) string {
+	brandPlain, brandStyled := m.brand()
+
 	// While anything is marked the subtitle gives way to the running tally: what is
 	// queued for deletion matters more than a tagline, and the header is where a
 	// queue building up is least likely to be missed.
@@ -389,25 +412,25 @@ func (m *model) viewBreadcrumb(wordmark, tagline, path string) string {
 		sub, subStyle, subMin = tally, m.st.accent, minWidthForTally
 	}
 
-	left := wordmark
+	left := brandPlain
+	styled := brandStyled
 	if m.width >= subMin {
 		left += "  " + sub
+		styled += "  " + subStyle.Render(sub)
 	}
 
 	const gap = 2
 	avail := m.width - runewidth.StringWidth(left) - gap
 	if avail < minNameWidth || path == "" {
-		return m.st.accent.Render(runewidth.Truncate(left, max(m.width, 1), ""))
+		if runewidth.StringWidth(left) <= m.width {
+			return styled
+		}
+		return m.st.accent.Render(runewidth.Truncate(brandPlain, max(m.width, 1), ""))
 	}
 
 	path = middleTruncate(path, avail)
 	pad := m.width - runewidth.StringWidth(left) - runewidth.StringWidth(path)
-
-	brand := m.st.accent.Render(wordmark)
-	if m.width >= subMin {
-		brand += "  " + subStyle.Render(sub)
-	}
-	return brand + strings.Repeat(" ", max(pad, 1)) + m.st.size.Render(path)
+	return styled + strings.Repeat(" ", max(pad, 1)) + m.st.size.Render(path)
 }
 
 // headerPath is what the top right corner says we are looking at: the directory
