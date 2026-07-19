@@ -13,6 +13,7 @@ import (
 
 	"github.com/pottom/cdu/internal/common"
 	"github.com/pottom/cdu/internal/dup"
+	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/device"
 	"github.com/pottom/cdu/pkg/fs"
 )
@@ -29,6 +30,9 @@ const (
 	// screenQueue is the delete queue: everything marked for removal, so a batch
 	// delete can be looked over before it happens rather than fired blind.
 	screenQueue
+	// screenThemes is the theme picker (p): the list re-themes live as the cursor
+	// moves, so the picker is its own preview.
+	screenThemes
 	screenHelp
 	// screenHashing is the spinner while dup.Find reads the candidate files. It is
 	// its own screen, not the scan spinner, because it comes back with a different
@@ -248,6 +252,14 @@ type model struct {
 	dupMarked map[fs.Item]*dup.Group
 	dupCursor int
 	dupOffset int
+
+	// themeNames is every theme the picker (p) lists; themeOriginal is the theme it
+	// opened on, restored if you esc out without keeping a choice. Moving the cursor
+	// applies a theme live, so the picker itself is the preview.
+	themeNames    []string
+	themeCursor   int
+	themeOffset   int
+	themeOriginal theme.Theme
 }
 
 type (
@@ -561,6 +573,9 @@ func (m *model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.scr == screenQueue {
 		return m.handleQueueKey(msg)
 	}
+	if m.scr == screenThemes {
+		return m.handleThemeKey(msg)
+	}
 	if m.scr == screenHashing {
 		return m.handleHashingKey(msg)
 	}
@@ -646,6 +661,8 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveCursor(1)
 	case "M":
 		return m.openQueue()
+	case "p":
+		return m.openThemePicker()
 	case keyEscape:
 		// Nothing is deeper than the browser to back out of, so esc here cancels the
 		// selection instead — the whole marked set at once, the way esc drops any
