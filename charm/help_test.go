@@ -208,6 +208,35 @@ func TestHelpFitsTheTerminal(t *testing.T) {
 	}
 }
 
+// The cursor moves through the bindings and the pane at the foot describes the
+// one it is on — the point of the screen over a flat list.
+func TestHelpCursorDrivesTheDetailPane(t *testing.T) {
+	m := benchModel(3)
+	m.width, m.height, m.haveSize = 100, 40, true
+	m.scr = screenHelp
+	m.clampHelp()
+
+	assert.Equal(t, "↑ ↓  k j", m.helpSelectedEntry().keys, "the first binding is selected on open")
+
+	m = press(t, m, "down", "down")
+	e := m.helpSelectedEntry()
+	require.Equal(t, "← h", e.keys, "j walks the cursor down the bindings")
+
+	pane := m.helpPane()
+	require.NotEmpty(t, pane, "there is room for the pane at 100x40")
+	assert.Contains(t, pane, "parent directory", "the pane spells out the selected binding")
+}
+
+// On a terminal too short to spare the rows, the pane yields to the list.
+func TestHelpDropsThePaneWhenShort(t *testing.T) {
+	m := benchModel(3)
+	m.width, m.height, m.haveSize = 100, 10, true
+	m.scr = screenHelp
+	m.clampHelp()
+
+	assert.Empty(t, m.helpPane(), "a short terminal keeps the bindings, not the prose")
+}
+
 // A page taller than the terminal scrolls, and stops at both ends.
 func TestHelpScrollClamps(t *testing.T) {
 	m := benchModel(3)

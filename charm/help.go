@@ -1,6 +1,8 @@
 package charm
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -12,6 +14,12 @@ import (
 // "delete selected" and as "list mounted disks", which cannot both be true and
 // never were — `-d` is a flag.
 //
+// The list is a cursor away from being an index: arrow onto a binding and the
+// pane at the foot describes it in full — the gotcha the one-line `what` has no
+// room for (d recovers where D does not, which bar mode means what). The keys
+// that scroll a static help page are the keys that move the cursor here, so
+// there is nothing for a "press the key to describe it" to collide with.
+//
 // The footer advertises keys and so does this, which is two places describing
 // one thing and therefore two places that can disagree.
 // TestHelpCoversEveryFooterKey is the seam: every key any footer offers has to
@@ -21,6 +29,10 @@ import (
 type helpEntry struct {
 	keys string
 	what string
+	// detail is the fuller description shown in the pane when this binding is
+	// selected: the part that does not fit on the one line, and the part someone
+	// reading the help actually came for.
+	detail string
 }
 
 type helpGroup struct {
@@ -32,56 +44,69 @@ type helpGroup struct {
 // the disk, what changes the view, and where else you can be.
 var helpGroups = []helpGroup{
 	{"Navigate", []helpEntry{
-		{"↑ ↓  k j", "move"},
-		{"→ ↵  l", "enter directory"},
-		{"← h", "go to parent — at the root, scan the one above it"},
-		{"g G", "jump to top / bottom"},
-		{"pgup pgdn", "page"},
-		{"/", "filter this directory (fuzzy, live)"},
-		{"f", "find files by name, any depth (*.mkv)"},
+		{"↑ ↓  k j", "move", "Move the cursor one row. The list scrolls to keep it in view."},
+		{"→ ↵  l", "enter directory", "Enter the directory under the cursor. On a file it does nothing — use v to view or o to open it."},
+		{
+			keys:   "← h",
+			what:   "go to parent — at the root, scan the one above it",
+			detail: "Go up to the parent directory. At the scan root it scans the directory one level up on disk instead.",
+		},
+		{"g G", "jump to top / bottom", "Jump straight to the first or last row."},
+		{"pgup pgdn", "page", "Scroll a whole screen at a time."},
+		{"/", "filter this directory (fuzzy, live)", "Filter this directory as you type — a fuzzy, live match on the names here. esc clears it."},
+		{"f", "find files by name, any depth (*.mkv)", "Search the whole scanned tree by name, at any depth. Takes a glob like *.mkv or a plain substring."},
 	}},
 	{"Change the disk", []helpEntry{
-		{"d", "trash it — does not free space"},
-		{"D", "delete for good — frees space, no undo"},
-		{"e", "empty a file"},
-		{"u", "undo the last trash"},
-		{"r", "rescan"},
-		{"space", "mark for a batch delete"},
-		{"M", "the delete queue — review, then delete the marked set"},
+		{"d", "trash it — does not free space", "Move to the trash — recoverable with u this session. It does not free disk space until the trash is emptied."},
+		{"D", "delete for good — frees space, no undo", "Delete permanently and free the space now. There is no undo, so cdu asks first."},
+		{"e", "empty a file", "Truncate the file to zero bytes but keep it in place — handy for a runaway log."},
+		{"u", "undo the last trash", "Put back the last thing you trashed with d. Only a trash is recoverable; a D delete is gone."},
+		{"r", "rescan", "Read the current directory from disk again, picking up whatever changed."},
+		{"space", "mark for a batch delete", "Mark this row for a batch delete. Marked rows show struck through in red; M reviews the whole set."},
+		{
+			keys:   "M",
+			what:   "the delete queue — review, then delete the marked set",
+			detail: "Open the queue of everything marked so far. Review it, then delete the whole set behind one confirm.",
+		},
 	}},
 	{"Change the view", []helpEntry{
-		// The second keys are named but not explained: both menus spell their own
-		// fields out in the footer the moment you enter them, which is the rule that
-		// stops a mode being invisible. Repeating the words here only made the line
-		// too long to fit. Naming the keys is not optional though — they are
-		// bindings, and this screen is every binding.
-		{"s", "sort, then s n c m — or d for folders first"},
-		{"t", "columns, then a B c m — or s to save"},
-		{"a", "apparent size ⇄ disk usage"},
-		{"B", "bars: largest item ⇄ this directory"},
-		{"c m", "item count, mtime"},
-		{"p", "themes — preview and keep one"},
+		// The second keys are named but not explained in the one-liner: both menus
+		// spell their own fields out in the footer the moment you enter them, which is
+		// the rule that stops a mode being invisible. The pane has room to name them.
+		{"s", "sort, then s n c m — or d for folders first", "Open the sort menu, then a field: s size, n name, c item count, m mtime. d toggles folders-first."},
+		{"t", "columns, then a B c m — or s to save", "Open the column menu, then toggle one: a apparent size, B bars, c count, m mtime. s saves the layout."},
+		{"a", "apparent size ⇄ disk usage", "Switch every size between apparent size (bytes in the file) and disk usage (the blocks it occupies)."},
+		{"B", "bars: largest item ⇄ this directory", "Switch the bars between sizing against the largest item and against this whole directory's total."},
+		{"c m", "item count, mtime", "Show the item-count and modified-time columns. Also reachable from the sort and column menus."},
+		{"p", "themes — preview and keep one", "Open the theme picker. Moving the cursor previews each theme live; enter keeps and saves it, esc restores."},
 	}},
 	{"Elsewhere", []helpEntry{
-		{"T", "the largest files, any depth"},
-		{"F", "find duplicate files (reads them)"},
-		{"v", "view a file"},
-		{"o", "open a file in its default app"},
-		{"?", "this screen"},
-		{"esc", "back — cancel a scan, or clear the marks"},
-		{"q", "quit"},
+		{"T", "the largest files, any depth", "List the largest files anywhere under here — deepest search, biggest first."},
+		{"F", "find duplicate files (reads them)", "Find byte-identical files by hashing their contents, grouped so you can reclaim the copies. It reads files."},
+		{"v", "view a file", "Open the file in a built-in read-only pager; q returns."},
+		{"o", "open a file in its default app", "Hand the file to the operating system's default app (open / xdg-open / start)."},
+		{"?", "this screen", "This help — every binding cdu has, on one screen."},
+		{"esc", "back — cancel a scan, or clear the marks", "Step back one screen. During a scan it cancels it; with rows marked it clears the marks."},
+		{"q", "quit", "Leave cdu. From the help or the file viewer it closes just that, not the program."},
 	}},
 }
 
 const (
 	// helpKeyWidth is the key column; "pgup pgdn" is the widest thing in it.
 	helpKeyWidth = 10
+	// helpGutter is the two columns each row keeps at its left: two spaces normally,
+	// the "▸ " cursor marker on the selected row. Titles keep it too, so keys line up
+	// under their heading.
+	helpGutter = 2
 	// minWidthForHelpColumns is where the groups stop stacking and sit side by
 	// side, as the mock draws them. Below it the screen scrolls, which is the
 	// honest answer for a terminal that cannot hold a page of help.
 	minWidthForHelpColumns = 96
 	helpColumnGap          = 4
-	helpIndent             = 2
+	// minVisibleForHelpPane is the list height below which the detail pane is
+	// dropped: on a short terminal the bindings themselves are worth more than the
+	// prose, so the pane yields to them.
+	minVisibleForHelpPane = 8
 )
 
 // helpLine is one line, twice: as text and as pixels.
@@ -99,29 +124,49 @@ type helpLine struct {
 
 func (m *model) helpBlank() helpLine { return helpLine{} }
 
+// helpBlankCell is a blank of exactly width columns, for padding a short column.
+func (m *model) helpBlankCell(width int) helpLine {
+	s := spaces(max(width, 0))
+	return helpLine{plain: s, styled: s}
+}
+
 func (m *model) helpTitle(title string, width int) helpLine {
-	t := cell(title, width)
+	t := cell(spaces(helpGutter)+title, width)
 	return helpLine{plain: t, styled: m.st.dirName.Render(t)}
 }
 
-// helpRow is one binding, at exactly width columns.
-func (m *model) helpRow(e helpEntry, width int) helpLine {
-	if width <= helpKeyWidth+1 {
+// helpRow is one binding, at exactly width columns, banded when it is the one the
+// cursor is on.
+func (m *model) helpRow(e helpEntry, width int, selected bool) helpLine {
+	marker := spaces(helpGutter)
+	if selected {
+		marker = "▸ "
+	}
+	body := width - helpGutter
+
+	var plain, styled string
+	if body <= helpKeyWidth+1 {
 		// Too narrow for both. The key is the part you cannot guess.
-		k := cell(e.keys, width)
-		return helpLine{plain: k, styled: m.st.accent.Render(k)}
+		k := cell(e.keys, max(body, 1))
+		plain = marker + k
+		styled = marker + m.st.accent.Render(k)
+	} else {
+		keys := cell(e.keys, helpKeyWidth)
+		what := cell(e.what, body-helpKeyWidth-1)
+		plain = marker + keys + " " + what
+		styled = marker + m.st.accent.Render(keys) + " " + m.st.dim.Render(what)
 	}
-	keys := cell(e.keys, helpKeyWidth)
-	what := cell(e.what, width-helpKeyWidth-1)
-	return helpLine{
-		plain:  keys + " " + what,
-		styled: m.st.accent.Render(keys) + " " + m.st.dim.Render(what),
+	if selected {
+		// One continuous band across the whole cell, marker and all.
+		styled = m.st.selected.Render(cell(plain, width))
 	}
+	return helpLine{plain: plain, styled: styled}
 }
 
 func (m *model) openHelp() (tea.Model, tea.Cmd) {
 	m.helpFrom = m.scr
 	m.helpOffset = 0
+	m.helpCursor = 0
 	m.scr = screenHelp
 	return m, nil
 }
@@ -134,73 +179,136 @@ func (m *model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scr = m.helpFrom
 		return m, nil
 	case keyUp, "k":
-		m.helpOffset--
+		m.helpCursor--
 	case keyDown, "j":
-		m.helpOffset++
+		m.helpCursor++
 	case keyPgUp:
-		m.helpOffset -= m.visibleLines()
+		m.helpCursor -= m.helpListHeight()
 	case keyPgDown:
-		m.helpOffset += m.visibleLines()
+		m.helpCursor += m.helpListHeight()
 	case keyHome, "g":
-		m.helpOffset = 0
+		m.helpCursor = 0
 	case keyEnd, "G":
-		m.helpOffset = len(m.helpLines())
+		m.helpCursor = m.helpEntryCount() - 1
 	}
 	m.clampHelp()
 	return m, nil
 }
 
+// clampHelp keeps the cursor in range and slides the viewport to follow it, so the
+// selected binding — the one the pane is describing — is always on screen.
 func (m *model) clampHelp() {
-	over := len(m.helpLines()) - m.visibleLines()
-	m.helpOffset = min(max(m.helpOffset, 0), max(over, 0))
-}
+	m.helpCursor = min(max(m.helpCursor, 0), max(m.helpEntryCount()-1, 0))
 
-func (m *model) helpLines() []helpLine {
-	if m.width >= minWidthForHelpColumns {
-		return m.helpColumns()
+	lines, selLine := m.helpBody()
+	listH := m.helpListHeight()
+	if selLine < m.helpOffset {
+		m.helpOffset = selLine
 	}
-	return m.helpStacked()
+	if selLine >= m.helpOffset+listH {
+		m.helpOffset = selLine - listH + 1
+	}
+	over := len(lines) - listH
+	m.helpOffset = min(max(m.helpOffset, 0), max(over, 0))
+
+	// At the first binding, show the very top so its group title is not scrolled
+	// off above it — the selected entry sits one line below the title.
+	if m.helpCursor == 0 {
+		m.helpOffset = 0
+	}
 }
 
-func (m *model) helpStacked() []helpLine {
-	width := max(m.width-helpIndent, 1)
+func (m *model) helpEntryCount() int {
+	n := 0
+	for _, g := range helpGroups {
+		n += len(g.entries)
+	}
+	return n
+}
 
-	var lines []helpLine
-	for i, g := range helpGroups {
-		if i > 0 {
+// helpCursorPos maps the flat cursor to (group, entry).
+func (m *model) helpCursorPos() (group, entry int) {
+	idx := m.helpCursor
+	for gi, g := range helpGroups {
+		if idx < len(g.entries) {
+			return gi, idx
+		}
+		idx -= len(g.entries)
+	}
+	gi := len(helpGroups) - 1
+	return gi, len(helpGroups[gi].entries) - 1
+}
+
+func (m *model) helpSelectedEntry() helpEntry {
+	gi, ei := m.helpCursorPos()
+	return helpGroups[gi].entries[ei]
+}
+
+// helpLines is the rendered page without regard to which line is selected — the
+// count is what the layout tests ask for.
+func (m *model) helpLines() []helpLine {
+	lines, _ := m.helpBody()
+	return lines
+}
+
+// helpBody renders the page and reports which line the selected binding is on, so
+// the viewport can be slid to keep it visible.
+func (m *model) helpBody() (lines []helpLine, selLine int) {
+	selGi, selEi := m.helpCursorPos()
+	if m.width >= minWidthForHelpColumns {
+		return m.helpColumns(selGi, selEi)
+	}
+	return m.helpStacked(selGi, selEi)
+}
+
+func (m *model) helpStacked(selGi, selEi int) (lines []helpLine, selLine int) {
+	width := max(m.width, 1)
+
+	for gi, g := range helpGroups {
+		if gi > 0 {
 			lines = append(lines, m.helpBlank())
 		}
-		lines = append(lines, m.indent(m.helpTitle(g.title, width)))
-		for _, e := range g.entries {
-			lines = append(lines, m.indent(m.helpRow(e, width)))
+		lines = append(lines, m.helpTitle(g.title, width))
+		for ei, e := range g.entries {
+			sel := gi == selGi && ei == selEi
+			if sel {
+				selLine = len(lines)
+			}
+			lines = append(lines, m.helpRow(e, width, sel))
 		}
 	}
-	return lines
+	return lines, selLine
 }
 
 // helpColumns puts the groups two abreast, as the mock draws them. Help you have
 // to scroll is help you read half of.
-func (m *model) helpColumns() []helpLine {
-	colWidth := max((m.width-helpIndent-helpColumnGap)/2, 1)
+func (m *model) helpColumns(selGi, selEi int) (lines []helpLine, selLine int) {
+	colWidth := max((m.width-helpColumnGap)/2, 1)
 
-	var left, right []helpLine
-	for i, g := range helpGroups {
-		block := []helpLine{m.helpTitle(g.title, colWidth)}
-		for _, e := range g.entries {
-			block = append(block, m.helpRow(e, colWidth))
+	type colCell struct {
+		line helpLine
+		sel  bool
+	}
+	var left, right []colCell
+	for gi, g := range helpGroups {
+		block := []colCell{{m.helpTitle(g.title, colWidth), false}}
+		for ei, e := range g.entries {
+			sel := gi == selGi && ei == selEi
+			block = append(block, colCell{m.helpRow(e, colWidth, sel), sel})
 		}
-		block = append(block, m.helpRow(helpEntry{}, colWidth)) // a blank of the right width
+		block = append(block, colCell{m.helpBlankCell(colWidth), false})
 
-		if i%2 == 0 {
+		if gi%2 == 0 {
 			left = append(left, block...)
 		} else {
 			right = append(right, block...)
 		}
 	}
 
-	blank := m.helpRow(helpEntry{}, colWidth)
+	blank := colCell{m.helpBlankCell(colWidth), false}
+	gap := spaces(helpColumnGap)
 	n := max(len(left), len(right))
-	lines := make([]helpLine, 0, n)
+	lines = make([]helpLine, 0, n)
 	for i := range n {
 		l, r := blank, blank
 		if i < len(left) {
@@ -209,30 +317,98 @@ func (m *model) helpColumns() []helpLine {
 		if i < len(right) {
 			r = right[i]
 		}
-		gap := spaces(helpColumnGap)
-		lines = append(lines, m.indent(helpLine{
-			plain:  l.plain + gap + r.plain,
-			styled: l.styled + gap + r.styled,
-		}))
+		if l.sel || r.sel {
+			selLine = i
+		}
+		lines = append(lines, helpLine{
+			plain:  l.line.plain + gap + r.line.plain,
+			styled: l.line.styled + gap + r.line.styled,
+		})
 	}
-	return lines
+	return lines, selLine
 }
 
-func (m *model) indent(l helpLine) helpLine {
-	pad := spaces(helpIndent)
-	return helpLine{plain: pad + l.plain, styled: pad + l.styled}
+// helpPaneHeight is one rule line plus the tallest detail wraps to at this width,
+// so the pane does not reflow the list as the cursor moves between short and long
+// entries. It is dropped on a short terminal and never eats more than half of it.
+func (m *model) helpPaneHeight() int {
+	if m.visibleLines() < minVisibleForHelpPane {
+		return 0
+	}
+	textLines := 1
+	for i := range m.helpEntryCount() {
+		if n := len(m.helpDetailWrap(m.helpEntryAt(i))); n > textLines {
+			textLines = n
+		}
+	}
+	h := 1 + textLines
+	if half := m.visibleLines() / 2; h > half {
+		h = half
+	}
+	return h
+}
+
+func (m *model) helpListHeight() int {
+	return max(m.visibleLines()-m.helpPaneHeight(), 1)
+}
+
+func (m *model) helpEntryAt(i int) helpEntry {
+	idx := i
+	for _, g := range helpGroups {
+		if idx < len(g.entries) {
+			return g.entries[idx]
+		}
+		idx -= len(g.entries)
+	}
+	g := helpGroups[len(helpGroups)-1]
+	return g.entries[len(g.entries)-1]
+}
+
+func (m *model) helpDetailText(e helpEntry) string {
+	d := e.detail
+	if d == "" {
+		d = e.what
+	}
+	return strings.TrimSpace(e.keys) + " — " + d
+}
+
+func (m *model) helpDetailWrap(e helpEntry) []string {
+	return wrapWords(m.helpDetailText(e), m.width)
+}
+
+// helpPane is the block beneath the list: a rule, then the selected binding's full
+// description. It stays exactly helpPaneHeight lines so the frame does not move.
+func (m *model) helpPane() string {
+	h := m.helpPaneHeight()
+	if h < 1 {
+		return ""
+	}
+	lines := []string{m.st.dim.Render(strings.Repeat("─", max(m.width, 0)))}
+	for _, seg := range m.helpDetailWrap(m.helpSelectedEntry()) {
+		if len(lines) >= h {
+			break
+		}
+		lines = append(lines, m.st.fileName.Render(clipTo(seg, m.width)))
+	}
+	return padLines(joinLines(lines), h)
 }
 
 func (m *model) viewHelpBody() string {
-	lines := m.helpLines()
-	height := m.visibleLines()
+	total := m.visibleLines()
+	lines, _ := m.helpBody()
+	listH := m.helpListHeight()
 
-	end := min(m.helpOffset+height, len(lines))
-	out := make([]string, 0, height)
+	end := min(m.helpOffset+listH, len(lines))
+	out := make([]string, 0, listH)
 	for i := m.helpOffset; i < end; i++ {
 		out = append(out, m.helpFit(lines[i]))
 	}
-	return padLines(joinLines(out), height)
+	body := padLines(joinLines(out), listH)
+
+	if pane := m.helpPane(); pane != "" {
+		body = joinLines([]string{body, pane})
+	}
+	return padLines(body, total)
 }
 
 // helpFit is the last guard: a line built for a width the terminal no longer has
