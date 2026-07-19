@@ -312,6 +312,38 @@ func TestAMarkedCursorRowsIconIsDanger(t *testing.T) {
 	assert.Contains(t, row, iconOpen, "the cursor row's icon is danger when marked")
 }
 
+// u clears the whole selection on every list, not just the browser — a dedicated
+// unmark-all, because esc backs out of the sub-screens instead of clearing there.
+func TestUUnmarksAllOnEveryScreen(t *testing.T) {
+	for _, scr := range []screen{screenBrowse, screenTop, screenDup, screenFind, screenQueue} {
+		m := benchModel(5)
+		m.marked[m.rows[0]] = true
+		m.marked[m.rows[1]] = true
+		require.Equal(t, 2, m.markedCount())
+
+		switch scr { //nolint:exhaustive // the other screens just need m.scr set, via default
+		case screenTop:
+			m.collectTopFiles()
+		case screenQueue:
+			m.openQueue()
+		default:
+			m.scr = scr
+		}
+
+		m = press(t, m, "u")
+		assert.Equal(t, 0, m.markedCount(), "u clears every mark on %v", scr)
+	}
+}
+
+// U is undo, not unmark: the two are the u/U pair, and pressing the capital must not
+// wipe a selection someone is still building.
+func TestCapitalUIsUndoNotUnmark(t *testing.T) {
+	m := benchModel(5)
+	m.marked[m.rows[0]] = true
+	m = press(t, m, "U")
+	assert.Equal(t, 1, m.markedCount(), "U undoes a trash; it must leave the marks alone")
+}
+
 // The danger icon is not the browser's alone: the largest-files, find and duplicates
 // screens each render their own rows, and a marked row's leading glyph must go danger
 // on every one of them. Regression guard for icons that stayed accent while the name

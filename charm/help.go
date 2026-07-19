@@ -57,12 +57,13 @@ var helpGroups = []helpGroup{
 		{"f", "find files by name, any depth (*.mkv)", "Search the whole scanned tree by name, at any depth. Takes a glob like *.mkv or a plain substring."},
 	}},
 	{"Change the disk", []helpEntry{
-		{"d", "trash it — does not free space", "Move to the trash — recoverable with u this session. It does not free disk space until the trash is emptied."},
+		{"d", "trash it — does not free space", "Move to the trash — recoverable with U this session. It does not free disk space until the trash is emptied."},
 		{"D", "delete for good — frees space, no undo", "Delete permanently and free the space now. There is no undo, so cdu asks first."},
 		{"e", "empty a file", "Truncate the file to zero bytes but keep it in place — handy for a runaway log."},
-		{"u", "undo the last trash", "Put back the last thing you trashed with d. Only a trash is recoverable; a D delete is gone."},
-		{"r", "rescan", "Read the current directory from disk again, picking up whatever changed."},
 		{"space", "mark for a batch delete", "Mark this row for a batch delete. Marked rows show struck through in red; M reviews the whole set."},
+		{"u", "unmark all — clear the whole selection", "Clear every mark at once, on any list. space marks one row, u drops them all. Nothing is deleted."},
+		{"U", "undo the last trash", "Put back the last thing you trashed with d. Only a trash is recoverable; a D delete is gone."},
+		{"r", "rescan", "Read the current directory from disk again, picking up whatever changed."},
 		{
 			keys:   "M",
 			what:   "the delete queue — review, then delete the marked set",
