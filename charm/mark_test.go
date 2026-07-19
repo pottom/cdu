@@ -274,6 +274,44 @@ func TestAMarkedCursorRowIsStillStruckThrough(t *testing.T) {
 	assert.Contains(t, row, open, "the cursor row's name is struck and red when marked")
 }
 
+// A marked row's icon is recoloured danger too, so the row's loudest element stops
+// reading as "fine" while its name reads as bound for deletion.
+func TestAMarkedRowsIconIsDanger(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(original)
+
+	m := benchModel(5)
+	total := m.rowScale()
+	plain := m.viewRow(m.rows[0], false, total)
+
+	m.marked[m.rows[0]] = true
+	marked := m.viewRow(m.rows[0], false, total)
+
+	dangerOpen := m.st.danger.Render("z")
+	dangerOpen = dangerOpen[:strings.Index(dangerOpen, "z")]
+
+	assert.Contains(t, marked, dangerOpen, "the marked row's icon takes the danger colour")
+	assert.NotContains(t, plain, dangerOpen, "an unmarked row's icon does not")
+}
+
+// On the cursor row, over the selection band, the icon is danger there too — the
+// mark reads the same whether or not the cursor is on it.
+func TestAMarkedCursorRowsIconIsDanger(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(original)
+
+	m := benchModel(5)
+	m.marked[m.rows[0]] = true
+	row := m.viewRow(m.rows[0], true, m.rowScale())
+
+	iconOpen := m.markedIconStyle(&m.st.selected).Render("z")
+	iconOpen = iconOpen[:strings.Index(iconOpen, "z")]
+
+	assert.Contains(t, row, iconOpen, "the cursor row's icon is danger when marked")
+}
+
 // The strike covers the name text, not the empty padding that fills the rest of the
 // column — the run of struck spaces would otherwise read as a line across the row.
 func TestTheStrikeIsOnTheNameNotThePadding(t *testing.T) {
