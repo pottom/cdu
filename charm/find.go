@@ -170,6 +170,8 @@ func (m *model) handleFindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.markUnderCursor()
 		m.moveFindCursor(1)
+	case "u":
+		m.unmarkAll()
 	case "M":
 		return m.openQueue()
 	case "d":

@@ -91,6 +91,8 @@ func (m *model) handleTopKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.markUnderCursor()
 		m.moveTopCursor(1)
+	case "u":
+		m.unmarkAll()
 	case "M":
 		return m.openQueue()
 	case "d":

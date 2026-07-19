@@ -654,6 +654,8 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "o":
 		return m.openFile()
 	case "u":
+		m.unmarkAll()
+	case "U":
 		cmd := m.askUndo()
 		return m, cmd
 	case "T":

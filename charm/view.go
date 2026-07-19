@@ -895,17 +895,21 @@ var (
 		{key: "q", label: "quit"},
 	}
 	// undoKey appears only when there is something to undo — see browseFooterKeys.
-	// It sits after delete, which is where the eye is after a delete.
-	undoKey = keyHint{key: "u", label: "undo", drop: 3}
+	// It sits after delete, which is where the eye is after a delete. Capital U:
+	// lower-case u is the far more frequent unmark-all (see clearKey), so the easy
+	// key goes to the everyday action and undo takes the shift.
+	undoKey = keyHint{key: "U", label: "undo", drop: 3}
 	// markKey and queueKey grow the footer around delete: space marks a row for a
 	// batch delete, M opens the queue of what is marked. queueKey shows only once
 	// there is a queue to open. markKey sheds before trash itself — one down from d,
 	// a step up from ? — so a narrow footer keeps the delete key over the mark hint.
 	markKey  = keyHint{key: "space", label: "mark", drop: 3}
 	queueKey = keyHint{key: "M", label: "queue", drop: 4}
-	// clearKey is the "unmark all" to space's mark-one. It shows only with a
-	// selection to clear, and sheds early — it is a convenience, not a way out.
-	clearKey = keyHint{key: "esc", label: "clear", drop: 4}
+	// clearKey is the "unmark all" to space's mark-one, on every list that can mark.
+	// It shows only with a selection to clear, and sheds early — it is a convenience,
+	// not a way out. On u, not esc: esc backs out of the sub-screens, so a dedicated
+	// key is the only way to clear the set from there without leaving.
+	clearKey = keyHint{key: "u", label: "unselect", drop: 4}
 	// The whole footer becomes the menu: while a mode is on, nothing else is worth
 	// saying, and a mode nobody can see is a trap.
 	sortMenuKeys = []keyHint{
@@ -1107,6 +1111,14 @@ func (m *model) viewFooter() string {
 		keys = m.sortMenuKeys()
 	case m.colPending:
 		keys = colMenuKeys
+	}
+
+	// The unselect hint rides along on the largest-files, find, duplicate and queue
+	// lists too while something is marked — the browser grows it in browseFooterKeys,
+	// but those screens use static lists, so it is appended here. Clearing the set has
+	// to be discoverable wherever the set can be built.
+	if m.scr != screenBrowse && m.marksActOnSet() && m.markedCount() > 0 {
+		keys = append(append([]keyHint{}, keys...), clearKey)
 	}
 
 	right, rightStyle := m.footerRight()

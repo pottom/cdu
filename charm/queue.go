@@ -55,6 +55,12 @@ func (m *model) handleQueueKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveQueueCursor(m.visibleLines())
 	case " ":
 		m.unmarkFromQueue()
+	case "u":
+		// Clear the whole set — and the snapshot with it, so the screen empties rather
+		// than keeping rows for marks that are gone.
+		m.unmarkAll()
+		m.queue = m.queue[:0]
+		m.queueCursor, m.queueOffset = 0, 0
 	case keyEnter, keyRight, "l":
 		return m.revealQueueItem()
 	case "v":

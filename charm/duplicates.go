@@ -216,6 +216,8 @@ func (m *model) handleDupKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.markUnderCursor()
 		m.moveDupCursor(1)
+	case "u":
+		m.unmarkAll()
 	case "M":
 		return m.openQueue()
 	case "d":
