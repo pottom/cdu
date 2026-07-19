@@ -110,28 +110,51 @@ signs:
     artifacts: checksum
     output: true
 
-# The container image, like gdu's, on GitHub's registry. A single multi-arch image
-# (linux/amd64 + linux/arm64) built from the pre-compiled binaries — the Dockerfile
-# only copies one in — so `docker pull ghcr.io/pottom/cdu` resolves to the puller's
-# architecture. arm64 builds under QEMU in CI; the image only COPYs a binary, so the
-# emulation cost is nil. latest is held back on a prerelease.
-dockers_v2:
-  - id: cdu
-    images:
-      - ghcr.io/pottom/cdu
-    tags:
-      - "v{{ .Version }}"
-      - "latest"
-    platforms:
-      - linux/amd64
-      - linux/arm64
+# The container image, like gdu's, on GitHub's registry. One image built per arch —
+# each a single-platform buildx build, so the scratch Dockerfile's `COPY cdu` finds
+# the one binary GoReleaser stages for that arch — then joined into a multi-arch
+# manifest so `docker pull ghcr.io/pottom/cdu` resolves to the puller's architecture.
+# arm64 builds under QEMU in CI; the image only COPYs a binary, so the emulation cost
+# is nil. (dockers_v2's single multi-platform build cannot use this Dockerfile: `COPY
+# cdu` is ambiguous when the context holds every arch's binary at once.)
+dockers:
+  - image_templates:
+      - "ghcr.io/pottom/cdu:v{{ .Version }}-amd64"
+    use: buildx
+    goos: linux
+    goarch: amd64
     dockerfile: Dockerfile
-    labels:
-      org.opencontainers.image.title: "{{ .ProjectName }}"
-      org.opencontainers.image.description: "Disk usage analyzer with a Charm TUI, a fork of gdu"
-      org.opencontainers.image.version: "v{{ .Version }}"
-      org.opencontainers.image.source: "https://github.com/pottom/cdu"
-      org.opencontainers.image.licenses: "MIT"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Disk usage analyzer with a Charm TUI, a fork of gdu"
+      - "--label=org.opencontainers.image.version=v{{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/pottom/cdu"
+      - "--label=org.opencontainers.image.licenses=MIT"
+  - image_templates:
+      - "ghcr.io/pottom/cdu:v{{ .Version }}-arm64"
+    use: buildx
+    goos: linux
+    goarch: arm64
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Disk usage analyzer with a Charm TUI, a fork of gdu"
+      - "--label=org.opencontainers.image.version=v{{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/pottom/cdu"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "ghcr.io/pottom/cdu:v{{ .Version }}"
+    image_templates:
+      - "ghcr.io/pottom/cdu:v{{ .Version }}-amd64"
+      - "ghcr.io/pottom/cdu:v{{ .Version }}-arm64"
+  - name_template: "ghcr.io/pottom/cdu:latest"
+    skip_push: auto
+    image_templates:
+      - "ghcr.io/pottom/cdu:v{{ .Version }}-amd64"
+      - "ghcr.io/pottom/cdu:v{{ .Version }}-arm64"
 
 changelog:
   use: github
