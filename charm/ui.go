@@ -52,6 +52,10 @@ type UI struct {
 	noDelete   bool
 	noViewFile bool
 	mouse      bool
+
+	// version is this build's version string, shown in the header. Empty when the
+	// caller did not supply one, which the header simply omits.
+	version string
 	// icons draws Nerd Font glyphs in the icon cell instead of the plain markers.
 	// Off unless asked for: the glyphs need a patched font, and cdu cannot tell
 	// whether one is loaded.
@@ -182,6 +186,12 @@ func UseOldSizeBar() Option {
 // WithDeviceGetter supplies the mount table the header's disk line is drawn from.
 func WithDeviceGetter(getter device.DevicesInfoGetter) Option {
 	return func(ui *UI) { ui.getter = getter }
+}
+
+// WithVersion supplies this build's version string for the header, and the baseline
+// the startup update check compares a release against.
+func WithVersion(v string) Option {
+	return func(ui *UI) { ui.version = v }
 }
 
 // WithTheme resolves the config's theme block against --theme and installs the

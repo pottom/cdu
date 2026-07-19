@@ -32,6 +32,11 @@ type styles struct {
 	dim           lipgloss.Style
 	accent        lipgloss.Style
 	danger        lipgloss.Style
+	// update is the ↯ and the newer version in the header. It is a fixed yellow, not
+	// a theme token: "there is an update" is a fixed meaning, like a warning light,
+	// and it should read the same amber whichever theme is on. Under no colour it is
+	// bold, and the ↯ glyph carries it.
+	update lipgloss.Style
 
 	modal        lipgloss.Style
 	button       lipgloss.Style
@@ -52,6 +57,7 @@ func newStyles(t *theme.Theme, useColors bool) styles {
 			dim:           plain,
 			accent:        plain.Bold(true),
 			danger:        plain.Bold(true),
+			update:        plain.Bold(true),
 
 			modal: plain.Border(lipgloss.RoundedBorder()).Padding(0, modalPadding),
 			// Without colour the focused button is told apart by its brackets and by
@@ -82,6 +88,7 @@ func newStyles(t *theme.Theme, useColors bool) styles {
 		dim:    lipgloss.NewStyle().Foreground(lg(t.Dim)),
 		accent: lipgloss.NewStyle().Foreground(lg(t.Accent)).Bold(true),
 		danger: lipgloss.NewStyle().Foreground(lg(t.Danger)).Bold(true),
+		update: lipgloss.NewStyle().Foreground(lipgloss.Color("#f5c518")).Bold(true),
 
 		modal: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
