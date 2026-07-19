@@ -1,0 +1,128 @@
+# GoReleaser owns cdu's releases: the cross-compiled matrix, archives, checksums,
+# SBOMs, cosign signatures and the GitHub release. The Makefile keeps only the
+# development targets. See docs/ for the release process.
+#
+# The container image is built by a separate config addition (dockers/manifests);
+# this file is the core release.
+version: 2
+
+project_name: cdu
+
+# cdu tags its releases cdu-vX.Y.Z, not vX.Y.Z, so they are never confused with the
+# v1.0.0…v5.36.1 tags git inherited from the gdu fork, and so the release workflow
+# triggers only on cdu's own tags. The "cdu-" prefix is stripped to a clean vX.Y.Z
+# version by the release workflow, which passes it in GORELEASER_CURRENT_TAG (the
+# monorepo tag_prefix that would do this in-config is a GoReleaser Pro feature).
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cdu
+    main: ./cmd/cdu
+    binary: cdu
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      # The scan engine's profile-guided-optimisation profile, inherited from gdu and
+      # still valid since cdu reuses pkg/analyze unchanged.
+      - -pgo=default.pgo
+    ldflags:
+      # build.GduVersion is not stamped here: build/cdu.go carries the synced gdu
+      # release as its default, so the compiled-in value is already correct and there
+      # is one source to bump on an upstream sync.
+      # v-prefixed to match the header and the Makefile's dev builds; .Version is the
+      # tag without its leading v (GoReleaser's convention), so it is added back here.
+      - -s -w
+      - -X github.com/pottom/cdu/build.Version=v{{ .Version }}
+      - -X github.com/pottom/cdu/build.User=goreleaser
+      - -X github.com/pottom/cdu/build.Time={{ .Date }}
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+      - netbsd
+      - openbsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - "386"
+    goarm:
+      - "5"
+      - "6"
+      - "7"
+    ignore:
+      # macOS and Windows never shipped 32-bit or arm(v5/6/7) here — match the gdu
+      # matrix, which built darwin amd64/arm64 and windows amd64 only.
+      - { goos: darwin, goarch: "386" }
+      - { goos: darwin, goarch: arm }
+      - { goos: windows, goarch: "386" }
+      - { goos: windows, goarch: arm }
+      - { goos: windows, goarch: arm64 }
+      # modernc.org/sqlite (the --db store's sqlite backend, via modernc.org/libc) has
+      # no build for these two, so they cannot cross-compile. Everything else in the
+      # matrix does. Verified with go build across the full set.
+      - { goos: netbsd, goarch: arm64 }
+      - { goos: openbsd, goarch: arm }
+
+archives:
+  - id: cdu
+    ids:
+      - cdu
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README.md
+      - LICENSE.md
+      - NOTICE
+
+checksum:
+  name_template: sha256sums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archive
+    artifacts: archive
+
+# Keyless cosign: signs the checksum file, which covers every artifact through it. No
+# private key — the signature is bound to the workflow's OIDC identity, verifiable with
+# `cosign verify-blob`. Needs id-token: write in the release workflow.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^build:"
+      - "^ci:"
+
+release:
+  github:
+    owner: pottom
+    name: cdu
+  prerelease: auto
