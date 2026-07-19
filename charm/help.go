@@ -60,6 +60,7 @@ var helpGroups = []helpGroup{
 		{"a", "apparent size ⇄ disk usage"},
 		{"B", "bars: largest item ⇄ this directory"},
 		{"c m", "item count, mtime"},
+		{"p", "themes — preview and keep one"},
 	}},
 	{"Elsewhere", []helpEntry{
 		{"T", "the largest files, any depth"},

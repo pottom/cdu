@@ -163,6 +163,8 @@ func (m *model) View() string {
 		return m.viewTop()
 	case screenQueue:
 		return m.viewQueue()
+	case screenThemes:
+		return m.viewThemes()
 	case screenHelp:
 		return m.viewHelp()
 	case screenHashing:
@@ -423,6 +425,9 @@ func (m *model) headerPath() string {
 	if m.scr == screenQueue {
 		return fmt.Sprintf("delete queue · %d %s · %s frees",
 			len(m.queue), itemNoun(len(m.queue)), m.ui.formatSize(m.markedReclaimable()))
+	}
+	if m.scr == screenThemes {
+		return "choose a theme — ↑↓ previews, ↵ keeps it"
 	}
 	if m.scr == screenHelp {
 		return "every key, one screen"
@@ -943,6 +948,13 @@ var (
 		{key: "esc", label: "back"},
 		{key: "q", label: "quit", drop: 4},
 	}
+	themeKeys = []keyHint{
+		{key: "↑↓", label: "preview"},
+		{key: "↵", label: "keep"},
+		{key: "esc", label: "cancel"},
+		{key: "?", label: "help", drop: 4},
+		{key: "q", label: "quit", drop: 4},
+	}
 )
 
 // maxDropLevel is the number of shedding rounds fitKeys will run.
@@ -1022,6 +1034,8 @@ func (m *model) viewFooter() string {
 		keys = topKeys
 	case m.scr == screenQueue:
 		keys = queueKeys
+	case m.scr == screenThemes:
+		keys = themeKeys
 	case m.scr == screenHelp:
 		keys = helpKeys
 	case m.scr == screenHashing:

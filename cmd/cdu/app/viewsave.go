@@ -25,6 +25,11 @@ func (a *App) saveView(v charm.ViewSettings) (string, error) {
 	a.Flags.ShowItemCount = v.ShowItemCount
 	a.Flags.ShowMTime = v.ShowMTime
 	a.Flags.FoldersFirst = v.FoldersFirst
+	if v.ThemeName != "" {
+		// The preset only — any token overrides the user hand-wrote stay, the way
+		// --theme leaves them, so saving a picked theme keeps their tweaks.
+		a.Flags.Theme.Preset = v.ThemeName
+	}
 	a.Flags.Sorting.By = v.SortBy
 	a.Flags.Sorting.Order = v.SortOrder
 

@@ -50,6 +50,7 @@ func TestSavingTheViewFromTheColumnMenu(t *testing.T) {
 		ShowRelativeSize: true,
 		ShowItemCount:    true,
 		ShowMTime:        false,
+		ThemeName:        "charm",
 		SortBy:           "mtime",
 		SortOrder:        "asc",
 	}, got, "what is written is what is on screen")
