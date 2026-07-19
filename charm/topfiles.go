@@ -215,7 +215,8 @@ func (m *model) viewTopRow(item fs.Item, selected bool) string {
 			return bar
 		}
 		if m.markOverlay(item) {
-			return bar + m.st.selected.Render(icon+sizeText+" "+dirText) +
+			return bar + m.markableGlyph(item, icon, &m.st.selected) +
+				m.st.selected.Render(sizeText+" "+dirText) +
 				m.renderMarkedName(nameText, &m.st.selected)
 		}
 		return bar + m.st.selected.Render(clipTo(plain, m.width-1))
@@ -228,7 +229,7 @@ func (m *model) viewTopRow(item fs.Item, selected bool) string {
 	if m.markOverlay(item) {
 		nameRender = m.renderMarkedName(nameText, &m.st.fileName)
 	}
-	return " " + m.st.dim.Render(icon) +
+	return " " + m.markableGlyph(item, icon, &m.st.dim) +
 		m.st.size.Render(sizeText) + " " +
 		m.st.dim.Render(dirText) +
 		nameRender
