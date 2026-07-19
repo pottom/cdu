@@ -61,6 +61,18 @@ func TestParentRowLeadsASubdirListing(t *testing.T) {
 	assert.False(t, root.isParentRow(root.rows[0]), "the root's list has no .. row")
 }
 
+// The ../ row reads as a way back, not a sized child: a back arrow, "../", and a
+// plain "parent directory" note in place of a size.
+func TestParentRowShowsBackArrowAndLabel(t *testing.T) {
+	m, _ := subdirModel(t)
+
+	row := m.viewParentRow(false)
+	assert.Contains(t, row, markerBack, "the ../ row is marked with a back arrow")
+	assert.Contains(t, row, parentName, "and named ../")
+	assert.Contains(t, row, parentLabel, "with a plain-words note of what it is")
+	assert.NotContains(t, row, "—", "the meaningless size dash is gone")
+}
+
 // → or enter on the ../ row goes up, landing back on the directory you were in.
 func TestEnterOnTheParentRowGoesUp(t *testing.T) {
 	m, sub := subdirModel(t)

@@ -560,33 +560,66 @@ func (m *model) viewEntry(item fs.Item, selected bool, total int64) string {
 	return row + "\n" + m.viewBar(item, selected, total)
 }
 
-// viewParentRow draws the ../ row at the head of a listing: the columns of an
-// ordinary row, but with a dash where a size would be and no bar — it is a way out
-// of the directory, not a measured thing in it.
+// parentName and parentLabel are the ../ row's two pieces of text: the way up,
+// and a plain-words reminder of what it is.
+const (
+	parentName  = "../"
+	parentLabel = "parent directory"
+)
+
+// viewParentRow draws the ../ row at the head of a listing: a back arrow, the
+// "../" name aligned under its siblings, and a dim "parent directory" note where a
+// size and bar would be. It is a way out of the directory, not a measured thing in
+// it, so it carries no size, no percentage and no bar.
 func (m *model) viewParentRow(selected bool) string {
 	icon := ""
 	if m.width >= minWidthForIcon {
-		icon = markerDir + " "
+		if m.ui.noUnicode {
+			icon = asciiMarkerBack + " "
+		} else {
+			icon = markerBack + " "
+		}
 	}
-	sizeText := padLeft("—", sizeColWidth)
+	iconW := runewidth.StringWidth(icon)
+	// The size column is kept as blank space, not a dash, so "../" still lines up
+	// under the sibling names — the alignment is worth more than the dash was.
+	sizeBlank := spaces(sizeColWidth)
 
-	pctText := ""
-	if m.width >= minWidthForPct {
-		pctText = padLeft("", pctColWidth)
-	}
+	const fixedCells = 2 // gutter + the gap between the size column and the name
+	rightWidth := max(m.width-iconW-sizeColWidth-fixedCells, minNameWidth)
 
-	const fixedCells = 2 // gutter + the gap between size and name
-	nameWidth := max(m.width-runewidth.StringWidth(icon)-sizeColWidth-runewidth.StringWidth(pctText)-fixedCells, minNameWidth)
-	nameText := runewidth.FillRight(runewidth.Truncate("..", nameWidth, "…"), nameWidth)
+	nameLabel := runewidth.FillRight(runewidth.Truncate(m.parentNameLabel(rightWidth), rightWidth, "…"), rightWidth)
+	plain := icon + sizeBlank + " " + nameLabel
 
-	plain := icon + sizeText + " " + nameText + pctText
 	if selected {
-		return m.viewSelectedRow(plain, icon+sizeText+" ", nameText, pctText, false, false)
+		marker := m.st.accent.Render("▌")
+		if m.width < 2 {
+			return marker
+		}
+		return marker + m.st.selected.Render(plain)
 	}
 	return " " + m.st.accent.Render(icon) +
-		m.st.dim.Render(sizeText) + " " +
-		m.st.dirName.Render(nameText) +
-		m.st.pct.Render(pctText)
+		m.st.dim.Render(sizeBlank) + " " +
+		m.styleParentNameLabel(rightWidth)
+}
+
+// parentNameLabel is the plain "../  parent directory", dropping the label when the
+// column is too narrow for both.
+func (m *model) parentNameLabel(width int) string {
+	if lineWidth(parentName)+2+lineWidth(parentLabel) <= width {
+		return parentName + "  " + parentLabel
+	}
+	return parentName
+}
+
+// styleParentNameLabel is parentNameLabel styled to exactly width columns: the name
+// as a directory, the label dim, padded out so the row is the full width.
+func (m *model) styleParentNameLabel(width int) string {
+	if lineWidth(parentName)+2+lineWidth(parentLabel) <= width {
+		pad := spaces(width - lineWidth(parentName) - 2 - lineWidth(parentLabel))
+		return m.st.dirName.Render(parentName) + m.st.dim.Render("  "+parentLabel+pad)
+	}
+	return m.st.dirName.Render(runewidth.FillRight(runewidth.Truncate(parentName, width, "…"), width))
 }
 
 // viewParentBar is the ../ row's empty second line: just the gutter, so a two-line
