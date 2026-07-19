@@ -30,22 +30,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          latest=$(gh api repos/dundee/gdu/releases/latest --jq .tag_name)
-          current=$(cat UPSTREAM_VERSION)
-          echo "latest=$latest"   >> "$GITHUB_OUTPUT"
-          echo "current=$current" >> "$GITHUB_OUTPUT"
+          latest_tag=$(gh api repos/dundee/gdu/releases/latest --jq .tag_name)
+          latest=${latest_tag#v}
+          # build/cdu.go's GduVersion is the single source of the synced gdu version.
+          current=$(sed -n 's/.*GduVersion = "\([^"]*\)".*/\1/p' build/cdu.go)
+          echo "latest-tag=$latest_tag" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest"         >> "$GITHUB_OUTPUT"
+          echo "current=$current"       >> "$GITHUB_OUTPUT"
           if [ "$latest" = "$current" ]; then
             echo "up-to-date=true" >> "$GITHUB_OUTPUT"
-            echo "cdu is on $current, which is the latest gdu release."
+            echo "cdu is on gdu $current, which is the latest release."
           else
             echo "up-to-date=false" >> "$GITHUB_OUTPUT"
-            echo "gdu $latest is out; cdu is on $current."
+            echo "gdu $latest_tag is out; cdu is on $current."
           fi
 
       - name: Merge upstream and re-apply the rename
         if: steps.versions.outputs.up-to-date == 'false'
         env:
-          LATEST: ${{ steps.versions.outputs.latest }}
+          LATEST_TAG: ${{ steps.versions.outputs.latest-tag }}
         run: |
           set -euo pipefail
           git config user.name  "github-actions[bot]"
@@ -56,14 +59,14 @@ jobs:
           # `upstream` tracks gdu verbatim and must always fast-forward. If it
           # cannot, upstream rewrote history and a human needs to look.
           git checkout -B upstream origin/upstream
-          git merge --ff-only "$LATEST"
+          git merge --ff-only "$LATEST_TAG"
 
           # The rename lives here, not on main — that is what keeps import-path
           # churn out of every merge. Conflicts here are real upstream changes.
           git checkout -B upstream-cdu origin/upstream-cdu
           git merge --no-edit upstream
           bash scripts/rename-upstream.sh
-          git commit -am "chore: rename gdu namespace to cdu for $LATEST" || true
+          git commit -am "chore: rename gdu namespace to cdu for $LATEST_TAG" || true
 
           git push origin upstream upstream-cdu
 
@@ -71,29 +74,31 @@ jobs:
         if: steps.versions.outputs.up-to-date == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_TAG: ${{ steps.versions.outputs.latest-tag }}
           LATEST: ${{ steps.versions.outputs.latest }}
           CURRENT: ${{ steps.versions.outputs.current }}
         run: |
           set -euo pipefail
-          branch="chore/sync-gdu-$LATEST"
+          branch="chore/sync-gdu-$LATEST_TAG"
           git checkout -B "$branch" origin/main
           git merge --no-edit upstream-cdu
-          echo "$LATEST" > UPSTREAM_VERSION
+          # build/cdu.go's GduVersion is the single source of the synced gdu version.
+          sed -i "s/GduVersion = \"$CURRENT\"/GduVersion = \"$LATEST\"/" build/cdu.go
           git commit -am "chore: sync gdu engine $CURRENT -> $LATEST"
           git push -u origin "$branch"
 
           gh pr create \
             --base main --head "$branch" \
             --title "chore: sync gdu engine $CURRENT -> $LATEST" \
-            --body "Carries the gdu \`$LATEST\` engine into cdu.
+            --body "Carries the gdu \`$LATEST_TAG\` engine into cdu.
 
           Opened automatically by \`watch-upstream.yml\`. Merging is gated on green CI —
           gdu does not honor semver for its packages, so an upstream change to the
           analyzer API can break \`charm/\`. If CI is red, fix it on this branch; do not
           merge and do not tag.
 
-          Engine version is recorded in \`UPSTREAM_VERSION\` and surfaced by
-          \`cdu --version\` as \`+gdu\` build metadata.
+          Engine version is recorded in \`build/cdu.go\`'s \`GduVersion\` and surfaced by
+          \`cdu --version\` as the \`gdu base\` line.
 
           Review checklist:
           - [ ] CI green (build, tests, lint)

@@ -111,11 +111,12 @@ doc written there would be describing a tree that gets overwritten from upstream
 
     charm/  internal/theme/  internal/config/  internal/trash/
     internal/dup/  internal/selfupdate/  build/cdu.go  scripts/  docs/
-    AGENTS.md  NOTICE  UPSTREAM_VERSION
+    AGENTS.md  NOTICE
 
-`UPSTREAM_VERSION` records which gdu tag the engine is at. It is the single source
-of truth for the `+gduA.B.C` build metadata and for the upstream watcher — update
-it only in a sync PR.
+`build/cdu.go`'s `GduVersion` is the single source of truth for which gdu release the
+engine is at — it is compiled in as the default, surfaced by `cdu --version` as the
+`gdu base` line, and read (not re-stamped) by the Makefile. Nothing else holds a copy.
+The upstream watcher bumps that one line in a sync PR; update it only there.
 
 **Conflict surface — edit deliberately, expect merge conflicts.** These are
 upstream files we must modify, and they are the only ones:
