@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/pottom/cdu/pkg/fs"
 )
 
@@ -16,14 +18,14 @@ import (
 // cursor row alone when it is empty. That keeps the one-key delete anyone already
 // knows, and adds the batch without a mode to enter or leave.
 
-// markGlyph is the tick drawn in a marked row's gutter, or its ASCII stand-in when
-// unicode is off. It measures one cell either way, so a marked row stays the exact
-// width an unmarked one is.
+// markGlyph is the ✗ drawn in a marked row's gutter — an X, because the mark is a
+// mark for deletion — or its ASCII stand-in when unicode is off. It measures one
+// cell either way, so a marked row stays the exact width an unmarked one is.
 func (m *model) markGlyph() string {
 	if m.ui.noUnicode {
-		return "*"
+		return "x"
 	}
-	return "✓"
+	return "✗"
 }
 
 func (m *model) isMarked(item fs.Item) bool {
@@ -87,30 +89,42 @@ func (m *model) marksActOnSet() bool {
 	}
 }
 
-// markOverlay reports whether a row should show the mark as an overlay — the tick
-// and the band. It is drawn on the browsing lists but not on the queue, where every
-// row is marked by definition and a screen of bands would just be noise.
+// markOverlay reports whether a row should wear the mark — the ✗ and the struck
+// name. It is drawn on the browsing lists but not on the queue, where every row is
+// marked by definition and marking them all again would just be noise.
 func (m *model) markOverlay(item fs.Item) bool {
 	return m.scr != screenQueue && m.isMarked(item)
 }
 
-// listSelMarker is the cursor-row gutter for the top/dup/find lists: the tick when
-// the row is also marked (the selection band already shows the cursor), else the bar.
-func (m *model) listSelMarker(item fs.Item) string {
+// markGutter is the one-cell head of an ordinary row: a red ✗ when the row is marked
+// for deletion, otherwise blank. Always one cell, so a marked row lines up with an
+// unmarked one.
+func (m *model) markGutter(item fs.Item) string {
 	if m.markOverlay(item) {
-		return m.st.accent.Render(m.markGlyph())
+		return m.st.danger.Render(m.markGlyph())
+	}
+	return " "
+}
+
+// selMarker is the cursor row's gutter: the red ✗ when the row is also marked (the
+// selection band already shows the cursor), otherwise the accent bar. A marked
+// cursor row therefore reads as marked from the ✗ and the struck name, not from a
+// background it shares with the plain cursor.
+func (m *model) selMarker(item fs.Item) string {
+	if m.markOverlay(item) {
+		return m.st.danger.Render(m.markGlyph())
 	}
 	return m.st.accent.Render("▌")
 }
 
-// markedListRow paints a marked, non-cursor row of the top/dup/find lists as the
-// same filled band the browser gives a marked row, so a queue building up reads the
-// same on every screen.
-func (m *model) markedListRow(plain string) string {
-	if m.width < 2 {
-		return m.st.marked.Render(m.markGlyph())
+// strikeMarked strikes a style through when its row is marked, so a marked name
+// reads as struck out — bound for deletion — under any colour and through the
+// selection band, which is what makes the cursor row's mark state unmistakable.
+func (m *model) strikeMarked(item fs.Item, style *lipgloss.Style) lipgloss.Style {
+	if m.markOverlay(item) {
+		return style.Strikethrough(true)
 	}
-	return m.st.marked.Render(m.markGlyph()) + m.st.marked.Render(clipTo(plain, m.width-1))
+	return *style
 }
 
 // isAncestorMarked reports whether a marked directory contains this item. Such an

@@ -274,19 +274,20 @@ func (m *model) viewFindRow(item fs.Item, selected bool) string {
 	plain := icon + sizeText + " " + pathText
 	if selected {
 		if m.width < 2 {
-			return m.listSelMarker(item)
+			return m.selMarker(item)
 		}
-		return m.listSelMarker(item) + m.st.selected.Render(clipTo(plain, m.width-1))
-	}
-	if m.markOverlay(item) {
-		return m.markedListRow(plain)
+		if m.markOverlay(item) {
+			return m.selMarker(item) + m.st.selected.Render(icon+sizeText+" ") +
+				m.st.selected.Strikethrough(true).Render(pathText)
+		}
+		return m.selMarker(item) + m.st.selected.Render(clipTo(plain, m.width-1))
 	}
 	if 1+runewidth.StringWidth(plain) > m.width {
 		return m.st.fileName.Render(clipTo(" "+plain, m.width))
 	}
-	return " " + m.st.dim.Render(icon) +
+	return m.markGutter(item) + m.st.dim.Render(icon) +
 		m.st.size.Render(sizeText) + " " +
-		m.st.fileName.Render(pathText)
+		m.strikeMarked(item, &m.st.fileName).Render(pathText)
 }
 
 func (m *model) viewFind() string {

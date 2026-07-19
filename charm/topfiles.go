@@ -211,21 +211,22 @@ func (m *model) viewTopRow(item fs.Item, selected bool) string {
 	plain := icon + sizeText + " " + dirText + nameText
 	if selected {
 		if m.width < 2 {
-			return m.listSelMarker(item)
+			return m.selMarker(item)
 		}
-		return m.listSelMarker(item) + m.st.selected.Render(clipTo(plain, m.width-1))
-	}
-	if m.markOverlay(item) {
-		return m.markedListRow(plain)
+		if m.markOverlay(item) {
+			return m.selMarker(item) + m.st.selected.Render(icon+sizeText+" "+dirText) +
+				m.st.selected.Strikethrough(true).Render(nameText)
+		}
+		return m.selMarker(item) + m.st.selected.Render(clipTo(plain, m.width-1))
 	}
 	if 1+runewidth.StringWidth(plain) > m.width {
 		return m.st.fileName.Render(clipTo(" "+plain, m.width))
 	}
 
-	return " " + m.st.dim.Render(icon) +
+	return m.markGutter(item) + m.st.dim.Render(icon) +
 		m.st.size.Render(sizeText) + " " +
 		m.st.dim.Render(dirText) +
-		m.st.fileName.Render(nameText)
+		m.strikeMarked(item, &m.st.fileName).Render(nameText)
 }
 
 func (m *model) viewTop() string {

@@ -595,8 +595,8 @@ func (m *model) viewBar(item fs.Item, selected bool, total int64) string {
 	switch {
 	case selected:
 		gutter = m.st.accent.Render("▌")
-	case m.isMarked(item):
-		gutter = m.st.marked.Render(m.markGlyph())
+	case m.markOverlay(item):
+		gutter = m.st.danger.Render(m.markGlyph())
 	}
 	return gutter + strings.Repeat(" ", indent-1) + bar
 }
@@ -675,13 +675,7 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	plain := icon + sizeText + " " + extras + nameText + pctText
 
 	if selected {
-		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored, m.isMarked(item))
-	}
-
-	// A marked row that is not the cursor is drawn as a filled band, so a queue
-	// building up is read at a glance and not from one small tick per row.
-	if m.isMarked(item) {
-		return m.viewMarkedRow(plain, floored)
+		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored, m.markOverlay(item))
 	}
 
 	// Floored: the terminal is narrower than the columns' own minimums add up to,
@@ -710,6 +704,10 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		nameStyle, iconStyle = m.st.dirName, m.st.accent
 	}
 
+	// A marked row's name is struck through — bound for deletion — which reads the
+	// same whether or not the cursor is on it, the way the mark must.
+	nameStyle = m.strikeMarked(item, &nameStyle)
+
 	// Under a filter, the runes the query matched are lit up so the reason a row is
 	// here is visible.
 	renderedName := nameStyle.Render(nameText)
@@ -717,28 +715,11 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		renderedName = highlightMatch(nameText, m.filter, &nameStyle, &m.st.accent)
 	}
 
-	return " " + iconStyle.Render(icon) +
+	return m.markGutter(item) + iconStyle.Render(icon) +
 		m.st.size.Render(sizeText) + " " +
 		m.st.dim.Render(extras) +
 		renderedName +
 		m.st.pct.Render(pctText)
-}
-
-// viewMarkedRow draws a marked, non-cursor row as one filled band a cell wider than
-// the tick alone: the tick in the gutter, then the row painted whole in the marked
-// style. It mirrors viewSelectedRow, minus the filter highlight — a band that stands
-// out is the point, not lighting matched runes within it.
-func (m *model) viewMarkedRow(plain string, floored bool) string {
-	if m.width < 1 {
-		return ""
-	}
-	if m.width < 2 {
-		return m.st.marked.Render(m.markGlyph())
-	}
-	if floored {
-		return m.st.marked.Render(clipTo(m.markGlyph()+plain, m.width))
-	}
-	return m.st.marked.Render(m.markGlyph()) + m.st.marked.MaxWidth(max(m.width-1, 1)).Render(plain)
 }
 
 // viewSelectedRow draws the cursor row. No box-shadow in a terminal: the mock's
@@ -758,7 +739,10 @@ func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored
 	// better spent saying the row is also queued for deletion.
 	marker := m.st.accent.Render("▌")
 	if marked {
-		marker = m.st.accent.Render(m.markGlyph())
+		// A red ✗ rather than the accent bar: on a marked cursor row it is the cue —
+		// with the struck name — that the row is bound for deletion, which a shared
+		// selection background could not say.
+		marker = m.st.danger.Render(m.markGlyph())
 	}
 	// One column: the marker alone. It is the whole of what the cursor row has to
 	// say at this size, and it is the cue that survives --no-color anyway — there
@@ -767,13 +751,33 @@ func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored
 		return marker
 	}
 
-	if m.filter != "" && !floored {
-		return marker +
-			m.st.selected.Render(prefix) +
-			highlightMatch(nameText, m.filter, &m.st.selected, &m.st.selectedMatch) +
-			m.st.selected.Render(pctText)
+	sel := m.st.selected
+
+	// Floored: too narrow to compose, so the row is clipped whole. A marked row
+	// strikes all of it through rather than just the name, since there is no name
+	// segment to isolate at this width.
+	if floored {
+		body := sel
+		if marked {
+			body = sel.Strikethrough(true)
+		}
+		return marker + body.MaxWidth(max(m.width-1, 1)).Render(plain)
 	}
-	return marker + m.st.selected.MaxWidth(max(m.width-1, 1)).Render(plain)
+
+	// A marked cursor row strikes only its name through — the size and percentage are
+	// not — composed as its own segment so the strike survives the selection
+	// background and reads whether or not the cursor is here.
+	name := sel.Render(nameText)
+	switch {
+	case marked:
+		name = sel.Strikethrough(true).Render(nameText)
+	case m.filter != "":
+		name = highlightMatch(nameText, m.filter, &sel, &m.st.selectedMatch)
+	}
+	if !marked && m.filter == "" {
+		return marker + sel.MaxWidth(max(m.width-1, 1)).Render(plain)
+	}
+	return marker + sel.Render(prefix) + name + sel.Render(pctText)
 }
 
 // extraColumns renders the optional item-count and mtime columns, in that order,
