@@ -1,15 +1,7 @@
-FROM docker.io/library/golang:1.26.1 as builder
-
-WORKDIR /app
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-RUN make build-static
-
+# Built by GoReleaser, not with `docker build .`: the pre-compiled linux binary for
+# the target arch is copied into the build context, so there is no build stage here.
+# scratch keeps the image to just the static, CGO-free binary — nothing else to run,
+# nothing else to patch.
 FROM scratch
-
-COPY --from=builder /app/dist/gdu /opt/gdu
-
-ENTRYPOINT ["/opt/gdu"]
+COPY cdu /usr/bin/cdu
+ENTRYPOINT ["/usr/bin/cdu"]
