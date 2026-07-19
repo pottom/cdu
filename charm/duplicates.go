@@ -405,7 +405,8 @@ func (m *model) viewDupFile(r *dupRow, selected bool) string {
 			return bar
 		}
 		if m.markOverlay(r.file) {
-			return bar + m.st.selected.Render(branch+sizeText+" ") +
+			return bar + m.markableGlyph(r.file, branch, &m.st.selected) +
+				m.st.selected.Render(sizeText+" ") +
 				m.renderMarkedName(pathText, &m.st.selected)
 		}
 		return bar + m.st.selected.Render(clipTo(plain, m.width-1))
@@ -417,7 +418,7 @@ func (m *model) viewDupFile(r *dupRow, selected bool) string {
 	if m.markOverlay(r.file) {
 		nameRender = m.renderMarkedName(pathText, &m.st.fileName)
 	}
-	return " " + m.st.dim.Render(branch) +
+	return " " + m.markableGlyph(r.file, branch, &m.st.dim) +
 		m.st.size.Render(sizeText) + " " +
 		nameRender
 }

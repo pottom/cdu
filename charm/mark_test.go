@@ -312,6 +312,56 @@ func TestAMarkedCursorRowsIconIsDanger(t *testing.T) {
 	assert.Contains(t, row, iconOpen, "the cursor row's icon is danger when marked")
 }
 
+// The danger icon is not the browser's alone: the largest-files, find and duplicates
+// screens each render their own rows, and a marked row's leading glyph must go danger
+// on every one of them. Regression guard for icons that stayed accent while the name
+// went red — the user had to report that once per screen.
+func TestAMarkedRowsIconIsDangerOnEveryList(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(original)
+
+	dangerOpen := func(m *model) string {
+		s := m.markedIconStyle(&m.st.dim).Bold(true).Render("z")
+		return s[:strings.Index(s, "z")]
+	}
+
+	t.Run("largest files", func(t *testing.T) {
+		m := benchModel(5)
+		m.collectTopFiles()
+		item := m.topFiles[0]
+		plain := m.viewTopRow(item, false)
+		m.marked[item] = true
+		marked := m.viewTopRow(item, false)
+		assert.Contains(t, marked, dangerOpen(m), "the marked file's icon is danger")
+		assert.NotContains(t, plain, dangerOpen(m), "an unmarked one is not")
+	})
+
+	t.Run("find", func(t *testing.T) {
+		m := benchModel(5)
+		item := m.rows[0]
+		m.findResults = fs.Files{item}
+		m.scr = screenFind
+		plain := m.viewFindRow(item, false)
+		m.marked[item] = true
+		marked := m.viewFindRow(item, false)
+		assert.Contains(t, marked, dangerOpen(m), "the marked result's icon is danger")
+		assert.NotContains(t, plain, dangerOpen(m), "an unmarked one is not")
+	})
+
+	t.Run("duplicates", func(t *testing.T) {
+		m := benchModel(5)
+		item := m.rows[0]
+		row := &dupRow{file: item, size: item.GetSize(), last: true}
+		m.scr = screenDup
+		plain := m.viewDupFile(row, false)
+		m.marked[item] = true
+		marked := m.viewDupFile(row, false)
+		assert.Contains(t, marked, dangerOpen(m), "the marked duplicate's branch is danger")
+		assert.NotContains(t, plain, dangerOpen(m), "an unmarked one is not")
+	})
+}
+
 // The strike covers the name text, not the empty padding that fills the rest of the
 // column — the run of struck spaces would otherwise read as a line across the row.
 func TestTheStrikeIsOnTheNameNotThePadding(t *testing.T) {

@@ -115,6 +115,21 @@ func (m *model) markedIconStyle(base *lipgloss.Style) lipgloss.Style {
 	return base.Foreground(lg(m.ui.theme.Danger))
 }
 
+// markableGlyph renders a list row's leading glyph — a file icon, or the tree
+// branch on the duplicates screen — danger-tinted when the row is marked and in
+// base otherwise. It is the one place every list agrees on how a marked row's icon
+// looks, so the largest-files, duplicates and find screens cannot drift from the
+// browser or from each other.
+func (m *model) markableGlyph(item fs.Item, glyph string, base *lipgloss.Style) string {
+	if m.markOverlay(item) {
+		// Bold danger on top of whatever base carries (the selection background on the
+		// cursor row, nothing on a plain one). This matches the browser's own marked
+		// icon (m.st.danger, also bold) so the lists do not drift apart.
+		return m.markedIconStyle(base).Bold(true).Render(glyph)
+	}
+	return base.Render(glyph)
+}
+
 // isAncestorMarked reports whether a marked directory contains this item. Such an
 // item is already covered — deleting the ancestor takes it too — so it must not be
 // counted a second time in the reclaimable total, nor deleted on its own.
