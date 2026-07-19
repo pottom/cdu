@@ -231,9 +231,9 @@ func TestEscClearsEveryMark(t *testing.T) {
 	assert.Contains(t, m.status, "marks cleared")
 }
 
-// A marked row is drawn as a filled band, not just a tick, so it must render
-// differently from the very same row unmarked — the whole point of the change.
-func TestAMarkedRowRendersAsABand(t *testing.T) {
+// A marked row wears a red ✗ and a struck-through name, so it reads as bound for
+// deletion — and differently from the very same row unmarked.
+func TestAMarkedRowIsStruckThrough(t *testing.T) {
 	original := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(original)
@@ -243,11 +243,35 @@ func TestAMarkedRowRendersAsABand(t *testing.T) {
 	plain := m.viewRow(m.rows[0], false, total)
 
 	m.marked[m.rows[0]] = true
-	banded := m.viewRow(m.rows[0], false, total)
+	marked := m.viewRow(m.rows[0], false, total)
 
-	assert.NotEqual(t, plain, banded, "a marked row must look different from an unmarked one")
-	assert.Contains(t, banded, "48;2", "the band carries a background colour the plain row does not")
-	assert.NotContains(t, plain, "48;2")
+	// The strike combines into one SGR with the name's colour, so match the exact
+	// opening lipgloss emits for a struck fileName rather than a bare \x1b[9m.
+	strike := m.markedNameStyle(&m.st.fileName).Render("z")
+	open := strike[:strings.Index(strike, "z")]
+
+	assert.NotEqual(t, plain, marked, "a marked row must look different from an unmarked one")
+	assert.Contains(t, marked, m.markGlyph(), "the gutter carries the ✗")
+	assert.Contains(t, marked, open, "the name is struck through")
+	assert.NotContains(t, plain, open, "an unmarked row is not")
+}
+
+// The strike is on the name whether or not the cursor is on the row — which is what
+// makes a marked cursor row unmistakable, the thing a shared background could not do.
+func TestAMarkedCursorRowIsStillStruckThrough(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(original)
+
+	m := benchModel(5)
+	m.marked[m.rows[0]] = true
+	row := m.viewRow(m.rows[0], true, m.rowScale()) // selected AND marked
+
+	strike := m.markedNameStyle(&m.st.selected).Render("z")
+	open := strike[:strings.Index(strike, "z")]
+
+	assert.Contains(t, row, open, "the cursor row's name is struck when marked")
+	assert.Contains(t, row, m.markGlyph(), "and the gutter shows the ✗, not the cursor bar")
 }
 
 // Marking is not the browser's alone: space marks on the largest-files screen too,
