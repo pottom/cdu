@@ -221,7 +221,10 @@ func (a *App) Run() error {
 	var ui UI
 
 	if a.Flags.ShowVersion {
+		// cdu's own version, then the gdu release its engine is synced to — cdu is a
+		// fork with its own version, not gdu's, and the gdu number is build metadata.
 		fmt.Fprintln(a.Writer, "Version:\t", build.Version)
+		fmt.Fprintln(a.Writer, "gdu base:\t", build.GduVersion)
 		fmt.Fprintln(a.Writer, "Built time:\t", build.Time)
 		fmt.Fprintln(a.Writer, "Built user:\t", build.User)
 		return nil
