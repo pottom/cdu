@@ -231,6 +231,56 @@ A permission-denied delete offers to retry with sudo.
 \f[B]r\f[R] / \f[B]T\f[R] / \f[B]F\f[R] / \f[B]?\f[R] / \f[B]esc\f[R] / \f[B]q\f[R]
 Rescan / largest files / find duplicate files / help / back (cancel a
 scan, or clear marks) / quit.
+.SH CONFIGURATION
+.PP
+cdu reads a YAML config from \f[B]\[ti]/.config/cdu/cdu.yaml\f[R] (or
+\f[B]$XDG_CONFIG_HOME/cdu/cdu.yaml\f[R]), overridden by
+\f[B]--config-file\f[R].
+On first run, if there is no cdu config but a gdu one exists, cdu reads
+the gdu config read-only and says so; \f[B]--write-config\f[R] takes it
+over into cdu\[cq]s own file.
+.PP
+Every persistent long flag is also a config key under its flag name
+\[em] for example \f[B]show-apparent-size\f[R],
+\f[B]show-item-count\f[R], \f[B]show-mtime\f[R],
+\f[B]folders-first\f[R], \f[B]icons\f[R], \f[B]mouse\f[R],
+\f[B]no-hidden\f[R], and the \f[B]ignore-dirs\f[R] list.
+Two blocks have no single flag:
+.TP
+\f[B]sorting\f[R]
+The default sort.
+\f[B]by\f[R] is one of \f[I]name\f[R], \f[I]size\f[R],
+\f[I]itemCount\f[R], \f[I]mtime\f[R]; \f[B]order\f[R] is \f[I]asc\f[R]
+or \f[I]desc\f[R].
+.TP
+\f[B]theme\f[R]
+Colours for the Charm interface (the classic interface is unaffected).
+\f[B]preset\f[R] selects a bundled theme \[em] \f[I]charm\f[R],
+\f[I]midnight\f[R], \f[I]ember\f[R], \f[I]phosphor\f[R], \f[I]mono\f[R]
+\[em] and any token below it overrides that preset\[cq]s colour for one
+role.
+Tokens are \f[B]#rrggbb\f[R] only.
+The roles include \f[I]accent\f[R], \f[I]text\f[R], \f[I]selected\f[R],
+\f[I]danger\f[R], \f[I]size\f[R], \f[I]dim\f[R], and \f[I]panel\f[R].
+A user theme file in \f[B]\[ti]/.config/cdu/themes/\f[R] is selected by
+its filename with \f[B]--theme\f[R]; see \f[B]cdu themes\f[R].
+.PP
+The quickest start is \f[B]cdu --write-config\f[R], which writes the
+effective configuration to edit.
+Example:
+.IP
+.nf
+\f[C]
+show-apparent-size: true
+folders-first: true
+sorting:
+  by: size
+  order: desc
+theme:
+  preset: midnight
+  accent: \[dq]#ff8800\[dq]
+\f[R]
+.fi
 .SH FILE FLAGS
 .PP
 Files and directories may be prefixed by a one-character flag with

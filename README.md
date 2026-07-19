@@ -95,7 +95,27 @@ cdu --theme mine
 
 cdu reads `~/.config/cdu/cdu.yaml` (or `$XDG_CONFIG_HOME/cdu/cdu.yaml`). On first
 run it falls back, read-only, to an existing gdu config and tells you so; `cdu
---write-config` takes it over into cdu's own file.
+--write-config` takes it over into cdu's own file — the quickest way to a starting
+config to edit.
+
+Every persistent long flag is a config key under its flag name (`show-apparent-size`,
+`icons`, `folders-first`, `ignore-dirs`, …). The `sorting` and `theme` blocks have no
+single flag:
+
+```yaml
+show-apparent-size: true
+folders-first: true
+sorting:
+  by: size            # name | size | itemCount | mtime
+  order: desc         # asc | desc
+theme:
+  preset: midnight    # charm | midnight | ember | phosphor | mono
+  accent: "#ff8800"   # override one role of the preset (#rrggbb)
+```
+
+Under `theme`, `preset` picks a bundled theme and any token below it (`accent`,
+`danger`, `text`, `selected`, `size`, `dim`, `panel`, …) overrides that role's colour.
+`man cdu` documents the full set.
 
 ## Building
 

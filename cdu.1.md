@@ -193,6 +193,44 @@ The Charm interface (the default) is driven by:
 :   Rescan / largest files / find duplicate files / help / back (cancel a scan, or
     clear marks) / quit.
 
+# CONFIGURATION
+
+cdu reads a YAML config from **\~/.config/cdu/cdu.yaml** (or
+**\$XDG_CONFIG_HOME/cdu/cdu.yaml**), overridden by **\--config-file**. On first run,
+if there is no cdu config but a gdu one exists, cdu reads the gdu config read-only and
+says so; **\--write-config** takes it over into cdu's own file.
+
+Every persistent long flag is also a config key under its flag name — for example
+**show-apparent-size**, **show-item-count**, **show-mtime**, **folders-first**,
+**icons**, **mouse**, **no-hidden**, and the **ignore-dirs** list. Two blocks have no
+single flag:
+
+**sorting**
+
+:   The default sort. **by** is one of *name*, *size*, *itemCount*, *mtime*;
+    **order** is *asc* or *desc*.
+
+**theme**
+
+:   Colours for the Charm interface (the classic interface is unaffected). **preset**
+    selects a bundled theme — *charm*, *midnight*, *ember*, *phosphor*, *mono* — and
+    any token below it overrides that preset's colour for one role. Tokens are
+    **\#rrggbb** only. The roles include *accent*, *text*, *selected*, *danger*,
+    *size*, *dim*, and *panel*. A user theme file in **\~/.config/cdu/themes/** is
+    selected by its filename with **\--theme**; see **cdu themes**.
+
+The quickest start is **cdu \--write-config**, which writes the effective
+configuration to edit. Example:
+
+    show-apparent-size: true
+    folders-first: true
+    sorting:
+      by: size
+      order: desc
+    theme:
+      preset: midnight
+      accent: "#ff8800"
+
 # FILE FLAGS
 
 Files and directories may be prefixed by a one-character
