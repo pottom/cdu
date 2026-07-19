@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -14,8 +15,10 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/pottom/cdu/build"
 	"github.com/pottom/cdu/cmd/cdu/app"
 	"github.com/pottom/cdu/internal/config"
+	"github.com/pottom/cdu/internal/selfupdate"
 	"github.com/pottom/cdu/internal/theme"
 	"github.com/pottom/cdu/pkg/device"
 )
@@ -106,6 +109,34 @@ var themesDumpCmd = &cobra.Command{
 	},
 }
 
+// updateCmd replaces the running binary with the latest release.
+//
+// It is the actionable other half of the startup update check: the header says a
+// newer cdu exists, and this fetches it. Like the check, it only reads public release
+// assets and it is off by default for anyone who installed cdu through a package
+// manager — reinstall through that instead, so its copy and cdu's do not disagree.
+var updateCmd = &cobra.Command{
+	Use:          "update",
+	Short:        "Update cdu to the latest release",
+	Args:         cobra.NoArgs,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Checking for a newer release…")
+		tag, err := selfupdate.Update(build.Version)
+		switch {
+		case errors.Is(err, selfupdate.ErrUpToDate):
+			fmt.Fprintf(cmd.OutOrStdout(), "cdu %s is already the latest release.\n", build.Version)
+			return nil
+		case errors.Is(err, selfupdate.ErrUnsupported):
+			return fmt.Errorf("%w — reinstall from https://github.com/pottom/cdu/releases", err)
+		case err != nil:
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "Updated cdu to %s.\n", tag)
+		return nil
+	},
+}
+
 // nolint:funlen // a lot of flags to initialize
 func init() {
 	af = &app.Flags{Style: app.Style{ProgressModal: app.ProgressModalOpts{ShowDiskProgressBar: true}}}
@@ -188,6 +219,7 @@ func init() {
 
 	themesCmd.AddCommand(themesDumpCmd)
 	rootCmd.AddCommand(themesCmd)
+	rootCmd.AddCommand(updateCmd)
 
 	initConfig()
 	initUserThemes()
