@@ -107,6 +107,14 @@ func (m *model) markedNameStyle(base *lipgloss.Style) lipgloss.Style {
 	return base.Strikethrough(true).Foreground(lg(m.ui.theme.Danger))
 }
 
+// markedIconStyle recolours a marked row's icon to the danger colour, keeping
+// whatever background base carries — the selection band on the cursor row. It is
+// the icon's counterpart to markedNameStyle, with no strike: a glyph is not struck,
+// its colour carries the state.
+func (m *model) markedIconStyle(base *lipgloss.Style) lipgloss.Style {
+	return base.Foreground(lg(m.ui.theme.Danger))
+}
+
 // isAncestorMarked reports whether a marked directory contains this item. Such an
 // item is already covered — deleting the ancestor takes it too — so it must not be
 // counted a second time in the reclaimable total, nor deleted on its own.

@@ -728,7 +728,7 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	plain := icon + sizeText + " " + extras + nameText + pctText
 
 	if selected {
-		return m.viewSelectedRow(plain, icon+sizeText+" "+extras, nameText, pctText, floored, m.markOverlay(item))
+		return m.viewSelectedRow(plain, icon, sizeText+" "+extras, nameText, pctText, floored, m.markOverlay(item))
 	}
 
 	// Floored: the terminal is narrower than the columns' own minimums add up to,
@@ -765,6 +765,10 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	switch {
 	case m.markOverlay(item):
 		renderedName = m.renderMarkedName(nameText, &nameStyle)
+		// The icon goes danger too, so a marked row reads as bound for deletion from
+		// its loudest element and not just its name — the accent icon was the one part
+		// still saying "fine".
+		iconStyle = m.st.danger
 	case m.filter != "":
 		renderedName = highlightMatch(nameText, m.filter, &nameStyle, &m.st.accent)
 	}
@@ -784,7 +788,7 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 // that all carry the selection background so the row stays one block. When the
 // name column has been floored the row no longer adds up to the exact width, so it
 // is clipped whole rather than composed.
-func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored, marked bool) string {
+func (m *model) viewSelectedRow(plain, icon, prefix, nameText, pctText string, floored, marked bool) string {
 	if m.width < 1 {
 		return ""
 	}
@@ -820,7 +824,14 @@ func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored
 	if !marked && m.filter == "" {
 		return marker + sel.MaxWidth(max(m.width-1, 1)).Render(plain)
 	}
-	return marker + sel.Render(prefix) + name + sel.Render(pctText)
+	// The icon is composed on its own so a marked cursor row can take the danger
+	// colour on it too, matching the plain marked rows; otherwise it keeps the
+	// selection foreground like the rest of the prefix.
+	iconRender := sel.Render(icon)
+	if marked {
+		iconRender = m.markedIconStyle(&sel).Render(icon)
+	}
+	return marker + iconRender + sel.Render(prefix) + name + sel.Render(pctText)
 }
 
 // extraColumns renders the optional item-count and mtime columns, in that order,
