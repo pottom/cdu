@@ -139,8 +139,8 @@ all 699 inherited tests**. Re-running the script is a no-op.
 
 `.github/workflows/watch-upstream.yml` runs daily. On a new gdu release it
 fast-forwards `upstream`, merges into `upstream-cdu`, re-runs the rename, merges
-into a `chore/sync-gdu-vX.Y.Z` branch off `main`, updates `UPSTREAM_VERSION`, and
-opens a PR.
+into a `chore/sync-gdu-vX.Y.Z` branch off `main`, bumps `GduVersion` in
+`build/cdu.go`, and opens a PR.
 
 Dependabot and Renovate are **not** applicable — they bump module versions, which
 is Strategy A's mechanism, not ours.
@@ -161,5 +161,5 @@ is only honest for compatible updates, and this pipeline says so out loud.
 - Two gaps in the engine must be filled in cdu-owned code, because upstream has
   neither: **cancellation** (quitting mid-scan currently ends with the process)
   and **trash/undo** (`pkg/remove` only does a permanent `os.RemoveAll`).
-- The engine version is recorded in `UPSTREAM_VERSION` and surfaced as SemVer
-  build metadata: `cdu v0.1.0+gdu5.36.1`.
+- The engine version is recorded in `build/cdu.go`'s `GduVersion` (its single
+  source) and surfaced as SemVer build metadata: `cdu v0.1.0+gdu5.36.1`.

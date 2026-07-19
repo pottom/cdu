@@ -15,10 +15,10 @@ ifeq ($(VERSION),)
 VERSION := v0.1.0-dev
 endif
 
-# GDU_VERSION is the upstream gdu the engine is synced to. build/cdu.go holds the same
-# default; setting it here too keeps the Makefile the single source when a build stamps
-# it, and it is bumped on each upstream sync alongside build/cdu.go.
-GDU_VERSION := 5.36.1
+# The synced gdu version is not set here: build/cdu.go's GduVersion is its single
+# source, compiled in as the default, so nothing stamps it and there is no second copy
+# to drift. The upstream watcher bumps that one file.
+GDU_VERSION := $(shell sed -n 's/.*GduVersion = "\([^"]*\)".*/\1/p' build/cdu.go)
 
 DATE := $(shell date +'%Y-%m-%d')
 GOBIN := go
@@ -28,7 +28,6 @@ GOBIN := go
 GOFLAGS ?= -trimpath -mod=readonly -pgo=default.pgo
 LDFLAGS := -s -w \
 	-X '$(PACKAGE)/build.Version=$(VERSION)' \
-	-X '$(PACKAGE)/build.GduVersion=$(GDU_VERSION)' \
 	-X '$(PACKAGE)/build.User=$(shell id -u -n)' \
 	-X '$(PACKAGE)/build.Time=$(shell LC_ALL=en_US.UTF-8 date)'
 
