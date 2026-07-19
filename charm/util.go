@@ -99,6 +99,33 @@ func middleTruncate(s string, width int) string {
 	return left + "…" + right
 }
 
+// wrapWords greedily breaks a plain string into lines no wider than width,
+// splitting on spaces. A single word longer than width is left whole and the
+// caller clips it — the help's detail text has no such words. Below width 1 it
+// returns nothing, since nothing fits.
+func wrapWords(s string, width int) []string {
+	if width < 1 {
+		return nil
+	}
+	var lines []string
+	cur := ""
+	for _, w := range strings.Fields(s) {
+		switch {
+		case cur == "":
+			cur = w
+		case lineWidth(cur)+1+lineWidth(w) <= width:
+			cur += " " + w
+		default:
+			lines = append(lines, cur)
+			cur = w
+		}
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return lines
+}
+
 func formatPct(size, total int64) string {
 	if total <= 0 {
 		return "—"

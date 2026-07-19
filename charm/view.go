@@ -898,7 +898,7 @@ var (
 		{key: "q", label: "quit"},
 	}
 	helpKeys = []keyHint{
-		{key: "↑↓", label: "scroll"},
+		{key: "↑↓", label: "select"},
 		{key: "?", label: "close"},
 		{key: "esc", label: "back"},
 	}

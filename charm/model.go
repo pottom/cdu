@@ -242,8 +242,12 @@ type model struct {
 
 	// helpFrom is the screen ? was pressed on, and the one it returns to. The
 	// help is reachable from all of them.
-	helpFrom   screen
+	helpFrom screen
+	// helpOffset is the first help line drawn; helpCursor is the selected binding,
+	// an index into helpEntries(). The cursor drives the detail pane and the offset
+	// follows it, so the selected row is always on screen.
 	helpOffset int
+	helpCursor int
 
 	// dupGroups is the result of the last duplicate search (F): sets of
 	// byte-identical files, most reclaimable first. dupRows is that flattened for
