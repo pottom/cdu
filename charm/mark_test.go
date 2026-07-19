@@ -214,8 +214,8 @@ func TestTheHeaderShowsTheMarkTally(t *testing.T) {
 	m.marked[m.rows[0]] = true
 	m.marked[m.rows[1]] = true
 	tally := m.markTally()
-	assert.Contains(t, tally, "2 items")
-	assert.Contains(t, m.viewHeader(), "2 items", "and it reaches the header")
+	assert.Contains(t, tally, "2 marked")
+	assert.Contains(t, m.viewHeader(), "2 marked", "and it reaches the header")
 }
 
 // Esc clears the whole selection at once — the unmark-all to space's mark-one — and
@@ -231,8 +231,9 @@ func TestEscClearsEveryMark(t *testing.T) {
 	assert.Contains(t, m.status, "marks cleared")
 }
 
-// A marked row wears a red ✗ and a struck-through name, so it reads as bound for
-// deletion — and differently from the very same row unmarked.
+// A marked row's name is struck through and recoloured danger, so it reads as bound
+// for deletion — and differently from the very same row unmarked. There is no gutter
+// glyph: the name treatment carries it.
 func TestAMarkedRowIsStruckThrough(t *testing.T) {
 	original := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -246,18 +247,18 @@ func TestAMarkedRowIsStruckThrough(t *testing.T) {
 	marked := m.viewRow(m.rows[0], false, total)
 
 	// The strike combines into one SGR with the name's colour, so match the exact
-	// opening lipgloss emits for a struck fileName rather than a bare \x1b[9m.
+	// opening lipgloss emits for a struck, danger-coloured name.
 	strike := m.markedNameStyle(&m.st.fileName).Render("z")
 	open := strike[:strings.Index(strike, "z")]
 
 	assert.NotEqual(t, plain, marked, "a marked row must look different from an unmarked one")
-	assert.Contains(t, marked, m.markGlyph(), "the gutter carries the ✗")
-	assert.Contains(t, marked, open, "the name is struck through")
+	assert.Contains(t, marked, open, "the name is struck through and red")
 	assert.NotContains(t, plain, open, "an unmarked row is not")
 }
 
-// The strike is on the name whether or not the cursor is on the row — which is what
-// makes a marked cursor row unmistakable, the thing a shared background could not do.
+// The name treatment is on the name whether or not the cursor is on the row — which
+// is what makes a marked cursor row unmistakable, the thing a shared background could
+// not do.
 func TestAMarkedCursorRowIsStillStruckThrough(t *testing.T) {
 	original := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -270,8 +271,29 @@ func TestAMarkedCursorRowIsStillStruckThrough(t *testing.T) {
 	strike := m.markedNameStyle(&m.st.selected).Render("z")
 	open := strike[:strings.Index(strike, "z")]
 
-	assert.Contains(t, row, open, "the cursor row's name is struck when marked")
-	assert.Contains(t, row, m.markGlyph(), "and the gutter shows the ✗, not the cursor bar")
+	assert.Contains(t, row, open, "the cursor row's name is struck and red when marked")
+}
+
+// The strike covers the name text, not the empty padding that fills the rest of the
+// column — the run of struck spaces would otherwise read as a line across the row.
+func TestTheStrikeIsOnTheNameNotThePadding(t *testing.T) {
+	original := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(original)
+
+	m := benchModel(5)
+	base := m.st.fileName
+	pad := "      "
+	got := m.renderMarkedName("name.txt"+pad, &base)
+
+	// The name carries the struck-and-red opening (lipgloss wraps each glyph, so it
+	// recurs); the trailing padding is rendered with the plain base, so the string
+	// ends un-struck — which is the whole point, that the strike stops at the text.
+	strikeOpen := m.markedNameStyle(&base).Render("z")
+	strikeOpen = strikeOpen[:strings.Index(strikeOpen, "z")]
+	assert.Contains(t, got, strikeOpen, "the name is struck through and red")
+	assert.True(t, strings.HasSuffix(got, base.Render(pad)), "the padding is left plain")
+	assert.NotContains(t, base.Render(pad), strikeOpen, "and the plain padding is not struck")
 }
 
 // Marking is not the browser's alone: space marks on the largest-files screen too,

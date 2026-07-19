@@ -592,11 +592,8 @@ func (m *model) viewBar(item fs.Item, selected bool, total int64) string {
 	// The gutter marker is repeated on the bar line so the selection — or a mark —
 	// reads as one block two lines tall rather than two unrelated things.
 	gutter := " "
-	switch {
-	case selected:
+	if selected {
 		gutter = m.st.accent.Render("▌")
-	case m.markOverlay(item):
-		gutter = m.st.danger.Render(m.markGlyph())
 	}
 	return gutter + strings.Repeat(" ", indent-1) + bar
 }
@@ -704,18 +701,19 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 		nameStyle, iconStyle = m.st.dirName, m.st.accent
 	}
 
-	// A marked row's name is struck through — bound for deletion — which reads the
-	// same whether or not the cursor is on it, the way the mark must.
-	nameStyle = m.strikeMarked(item, &nameStyle)
-
-	// Under a filter, the runes the query matched are lit up so the reason a row is
-	// here is visible.
+	// A marked row's name is struck through and recoloured — bound for deletion —
+	// which reads the same whether or not the cursor is on it, the way the mark must.
+	// Under a filter, the runes the query matched are lit up instead so the reason a
+	// row is here is visible.
 	renderedName := nameStyle.Render(nameText)
-	if m.filter != "" {
+	switch {
+	case m.markOverlay(item):
+		renderedName = m.renderMarkedName(nameText, &nameStyle)
+	case m.filter != "":
 		renderedName = highlightMatch(nameText, m.filter, &nameStyle, &m.st.accent)
 	}
 
-	return m.markGutter(item) + iconStyle.Render(icon) +
+	return " " + iconStyle.Render(icon) +
 		m.st.size.Render(sizeText) + " " +
 		m.st.dim.Render(extras) +
 		renderedName +
@@ -734,16 +732,9 @@ func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored
 	if m.width < 1 {
 		return ""
 	}
-	// A marked cursor row shows the tick in the gutter, not the selection bar: the
-	// filled background already says which row the cursor is on, so the one cell is
-	// better spent saying the row is also queued for deletion.
+	// The marker is the accent bar whether or not the row is marked — a marked cursor
+	// row reads as marked from its struck, red name, not from the gutter.
 	marker := m.st.accent.Render("▌")
-	if marked {
-		// A red ✗ rather than the accent bar: on a marked cursor row it is the cue —
-		// with the struck name — that the row is bound for deletion, which a shared
-		// selection background could not say.
-		marker = m.st.danger.Render(m.markGlyph())
-	}
 	// One column: the marker alone. It is the whole of what the cursor row has to
 	// say at this size, and it is the cue that survives --no-color anyway — there
 	// is no room for it *and* a column of name.
@@ -753,24 +744,20 @@ func (m *model) viewSelectedRow(plain, prefix, nameText, pctText string, floored
 
 	sel := m.st.selected
 
-	// Floored: too narrow to compose, so the row is clipped whole. A marked row
-	// strikes all of it through rather than just the name, since there is no name
-	// segment to isolate at this width.
+	// Floored: too narrow to compose, so the row is clipped whole. The mark is lost
+	// at this width, which is the honest trade for a terminal that cannot hold a
+	// name column.
 	if floored {
-		body := sel
-		if marked {
-			body = sel.Strikethrough(true)
-		}
-		return marker + body.MaxWidth(max(m.width-1, 1)).Render(plain)
+		return marker + sel.MaxWidth(max(m.width-1, 1)).Render(plain)
 	}
 
-	// A marked cursor row strikes only its name through — the size and percentage are
-	// not — composed as its own segment so the strike survives the selection
-	// background and reads whether or not the cursor is here.
+	// A marked cursor row strikes and recolours only its name — the size and
+	// percentage are not — composed as its own segment so the treatment survives the
+	// selection background and reads whether or not the cursor is here.
 	name := sel.Render(nameText)
 	switch {
 	case marked:
-		name = m.markedNameStyle(&sel).Render(nameText)
+		name = m.renderMarkedName(nameText, &sel)
 	case m.filter != "":
 		name = highlightMatch(nameText, m.filter, &sel, &m.st.selectedMatch)
 	}
