@@ -1,28 +1,44 @@
 ---
 date: {{date}}
 section: 1
-title: gdu
+title: cdu
 ---
 
 # NAME
 
-gdu - Pretty fast disk usage analyzer written in Go
+cdu - Fast disk usage analyzer with a Charm interface
 
 # SYNOPSIS
 
-**gdu \[flags\] \[directory_to_scan\]**
+**cdu \[flags\] \[directory_to_scan\]**
+
+**cdu themes** \| **cdu update**
 
 # DESCRIPTION
 
-Pretty fast disk usage analyzer written in Go.
+cdu is a fast disk usage analyzer. It is a fork of gdu
+(https://github.com/dundee/gdu) by Daniel Milde: the disk-analysis engine is
+gdu's, unchanged, and cdu replaces the interactive interface with one built on
+the Charm stack, adding themes, recoverable deletes, multi-select, and a
+self-updater.
 
-Gdu is intended primarily for SSD disks where it can fully utilize
-parallel processing. However HDDs work as well, but the performance gain
-is not so huge.
+The non-interactive and JSON export modes are byte-for-byte identical to gdu's,
+and **\--classic** gives you gdu's original interface. This is not the official
+gdu — report cdu's own bugs at https://github.com/pottom/cdu/issues.
+
+cdu is intended primarily for SSD disks where it can fully utilize parallel
+processing. HDDs work as well, but the performance gain is not so huge.
 
 # OPTIONS
 
-**-h**, **\--help**\[=false\] help for gdu
+**-h**, **\--help**\[=false\] help for cdu
+
+**\--classic**\[=false\] Use gdu's original interface instead of the Charm one
+
+**\--theme**=\"\" Color theme for the Charm interface (charm, midnight, ember,
+phosphor, mono, or a user theme). See **cdu themes**.
+
+**\--icons**\[=false\] Show Nerd Font file icons (needs a patched font)
 
 **-i**, **\--ignore-dirs**=\[/proc,/dev,/sys,/run\]
     Paths to ignore (separated by comma).
@@ -50,7 +66,7 @@ is not so huge.
 
 **-l**, **\--log-file**=\"/dev/null\" Path to a logfile
 
-**-m**, **\--max-cores** Set max cores that Gdu will use.
+**-m**, **\--max-cores** Set max cores that cdu will use.
 
 **-c**, **\--no-color**\[=false\] Do not use colorized output
 
@@ -106,9 +122,13 @@ non-interactive mode
 
 **-o**, **\--output-file** Export all info into file as JSON. If the file is \"-\", write to standard output.
 
-**\--config-file**=\"$HOME/.gdu.yaml\"             Read config from file
+**\--config-file** Read config from file. Without it, cdu reads
+\$XDG_CONFIG_HOME/cdu/cdu.yaml (\~/.config/cdu/cdu.yaml), falling back read-only to
+an existing gdu config and saying so.
 
-**\--write-config**\[=false\] Write current configuration to file (default is $HOME/.gdu.yaml)
+**\--write-config**\[=false\] Write the current configuration to
+\~/.config/cdu/cdu.yaml (or **\--config-file**). This is also how you take over a
+gdu config.
 
 **\--enable-profiling**\[=false\] Enable collection of profiling data and provide it on http://localhost:6060/debug/pprof/
 
@@ -116,7 +136,62 @@ non-interactive mode
 
 **-r**, **\--read-from-storage**\[=false\] Use existing database instead of re-scanning
 
-**-v**, **\--version**\[=false\] Print version
+**-v**, **\--version**\[=false\] Print version (cdu's, and the gdu engine it embeds)
+
+# SUBCOMMANDS
+
+**cdu themes**
+
+:   List the bundled color themes, each drawn in its own colors.
+    **cdu themes dump NAME** prints a theme's YAML, to save as the start of your own.
+
+**cdu update**
+
+:   Replace the running binary with the latest release from GitHub, after verifying
+    its checksum. Reads only public release assets and sends nothing. Skip it if cdu
+    was installed by a package manager — update through that instead.
+
+# KEY BINDINGS
+
+The Charm interface (the default) is driven by:
+
+**↑ ↓, k j** / **g G** / **pgup pgdn**
+
+:   Move the cursor / jump to top or bottom / page.
+
+**→ ↵ l** / **← h**
+
+:   Enter the directory under the cursor / go to the parent (the ../ row does too;
+    at the scan root, ← scans the directory above it on disk).
+
+**/** / **f**
+
+:   Filter this directory as you type (fuzzy, live) / find files by name across the
+    whole tree (glob or substring).
+
+**s** / **t**
+
+:   Sort menu (then a field: size, name, count, mtime; or **d** for folders-first) /
+    column menu (then **a** apparent size, **B** bars, **c** count, **m** mtime; **s**
+    saves the view). **a B c m** also work directly.
+
+**p** / **v** / **o**
+
+:   Theme picker (previews live) / view a file / open a file in its default app.
+
+**space** / **M** / **u**
+
+:   Mark a row for a batch delete / open the delete queue / unmark all.
+
+**d** / **D** / **e** / **U**
+
+:   Trash (recoverable, does not free space) / delete permanently / empty a file /
+    undo the last trash. A permission-denied delete offers to retry with sudo.
+
+**r** / **T** / **F** / **?** / **esc** / **q**
+
+:   Rescan / largest files / find duplicate files / help / back (cancel a scan, or
+    clear marks) / quit.
 
 # FILE FLAGS
 
