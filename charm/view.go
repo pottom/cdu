@@ -355,7 +355,9 @@ func (m *model) viewBrand() string {
 	// looking at, "duplicate files under ~/Work" — so it leads, right after the
 	// wordmark, bright, tagline dropped. On the browser it is a *breadcrumb* —
 	// where you are — so it stays quiet on the right and the tagline fills the gap.
-	if m.scr != screenBrowse {
+	// The theme picker floats over the browser, so it wears the browser's header —
+	// its breadcrumb and mark tally — not a title of its own.
+	if m.scr != screenBrowse && m.scr != screenThemes {
 		return m.viewTitle(wordmark, m.headerPath())
 	}
 	return m.viewBreadcrumb(wordmark, "charm disk usage", m.headerPath())
@@ -425,9 +427,6 @@ func (m *model) headerPath() string {
 	if m.scr == screenQueue {
 		return fmt.Sprintf("delete queue · %d %s · %s frees",
 			len(m.queue), itemNoun(len(m.queue)), m.ui.formatSize(m.markedReclaimable()))
-	}
-	if m.scr == screenThemes {
-		return "choose a theme — ↑↓ previews, ↵ keeps it"
 	}
 	if m.scr == screenHelp {
 		return "every key, one screen"

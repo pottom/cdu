@@ -258,7 +258,6 @@ type model struct {
 	// applies a theme live, so the picker itself is the preview.
 	themeNames    []string
 	themeCursor   int
-	themeOffset   int
 	themeOriginal theme.Theme
 }
 

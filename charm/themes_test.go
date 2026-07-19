@@ -1,6 +1,7 @@
 package charm
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -62,20 +63,24 @@ func TestKeepingAThemeSavesItsName(t *testing.T) {
 	assert.Equal(t, picked, saved.ThemeName, "and it is the picked theme's name that is written")
 }
 
-// Every theme name is drawn in its own accent, so the list is a set of swatches you
-// can read without selecting each — and the row stays exactly the terminal's width.
-func TestThemeRowsAreWidthExact(t *testing.T) {
+// The picker is a box floating over the browser: the directory you were in stays
+// on screen behind it — the whole point of previewing a theme on your own content —
+// and every line still fits the terminal's width exactly.
+func TestThemePickerFloatsOverTheList(t *testing.T) {
 	original := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(original)
 
-	m := benchModel(1)
+	m := benchModel(8)
+	m.width, m.height, m.haveSize = 80, 24, true
+	rowName := m.rows[0].GetName()
+
 	m.openThemePicker()
-	for _, width := range []int{20, 40, 80} {
-		m.width = width
-		for i, name := range m.themeNames {
-			row := m.viewThemeRow(name, i == m.themeCursor)
-			assert.Equal(t, width, lipgloss.Width(row), "theme row %q at width %d", name, width)
-		}
+	view := m.View()
+
+	assert.Contains(t, view, "Theme", "the picker box is shown")
+	assert.Contains(t, view, rowName, "and the directory behind it stays visible")
+	for i, line := range strings.Split(view, "\n") {
+		assert.LessOrEqual(t, lipgloss.Width(line), 80, "line %d overflows", i)
 	}
 }
