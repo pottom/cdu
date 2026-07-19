@@ -2,6 +2,8 @@
 
 Fast disk usage analyzer with a [Charm](https://charm.sh) interface.
 
+![cdu scanning a directory, browsing it, switching themes, and finding duplicates](docs/demo.gif)
+
 cdu is a fork of [gdu](https://github.com/dundee/gdu) by Daniel Milde. The
 disk-analysis engine is gdu's, reused as-is — cdu keeps its speed and its
 byte-for-byte export parity — and rebuilds the interactive interface on the Charm
