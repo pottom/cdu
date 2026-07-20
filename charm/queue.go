@@ -63,6 +63,8 @@ func (m *model) handleQueueKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.queueCursor, m.queueOffset = 0, 0
 	case keyEnter, keyRight, "l":
 		return m.revealQueueItem()
+	case "i":
+		m.toggleInfo()
 	case "v":
 		return m.openViewer()
 	case "o":
@@ -151,6 +153,9 @@ func (m *model) viewQueue() string {
 		parts = append(parts, m.viewHeader())
 	}
 	parts = append(parts, m.viewQueueList())
+	if pane := m.infoPane(); pane != "" {
+		parts = append(parts, pane)
+	}
 	if m.footerHeight() > 0 {
 		parts = append(parts, m.viewFooter())
 	}
