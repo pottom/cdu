@@ -65,7 +65,7 @@ Press **?** at any time for every key. The essentials:
 | `→ ↵ l`, `← h` | enter a directory, go to the parent |
 | `/`, `f` | filter this directory, find files tree-wide |
 | `s`, `t` | sort menu, column menu |
-| `p`, `v`, `o` | theme picker, view a file, open in default app |
+| `p`, `i`, `v`, `o` | theme picker, item-info pane, view a file, open in default app |
 | `space`, `M`, `u` | mark a row, open the delete queue, unmark all |
 | `d`, `D`, `e`, `U` | trash, delete for good, empty a file, undo the last trash |
 | `r`, `T`, `F` | rescan, largest files, find duplicates |
@@ -105,6 +105,7 @@ single flag:
 ```yaml
 show-apparent-size: true
 folders-first: true
+info: true            # the item-info pane at the foot of the list, on by default
 sorting:
   by: size            # name | size | itemCount | mtime
   order: desc         # asc | desc

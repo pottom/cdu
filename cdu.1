@@ -55,6 +55,9 @@ See \f[B]cdu themes\f[R].
 \f[B]--icons\f[R][=false] Show Nerd Font file icons (needs a patched
 font)
 .PP
+\f[B]--info\f[R][=true] Show the item-info pane at the foot of the list
+(toggle with i)
+.PP
 \f[B]-i\f[R], \f[B]--ignore-dirs\f[R]=[/proc,/dev,/sys,/run] Paths to
 ignore (separated by comma).
 Supports both absolute and relative paths.
@@ -216,9 +219,9 @@ folders-first) / column menu (then \f[B]a\f[R] apparent size,
 saves the view).
 \f[B]a B c m\f[R] also work directly.
 .TP
-\f[B]p\f[R] / \f[B]v\f[R] / \f[B]o\f[R]
-Theme picker (previews live) / view a file / open a file in its default
-app.
+\f[B]p\f[R] / \f[B]i\f[R] / \f[B]v\f[R] / \f[B]o\f[R]
+Theme picker (previews live) / toggle the item-info pane / view a file /
+open a file in its default app.
 .TP
 \f[B]space\f[R] / \f[B]M\f[R] / \f[B]u\f[R]
 Mark a row for a batch delete / open the delete queue / unmark all.
@@ -243,8 +246,9 @@ over into cdu\[cq]s own file.
 Every persistent long flag is also a config key under its flag name
 \[em] for example \f[B]show-apparent-size\f[R],
 \f[B]show-item-count\f[R], \f[B]show-mtime\f[R],
-\f[B]folders-first\f[R], \f[B]icons\f[R], \f[B]mouse\f[R],
-\f[B]no-hidden\f[R], and the \f[B]ignore-dirs\f[R] list.
+\f[B]folders-first\f[R], \f[B]info\f[R] (the item pane, on by default),
+\f[B]icons\f[R], \f[B]mouse\f[R], \f[B]no-hidden\f[R], and the
+\f[B]ignore-dirs\f[R] list.
 Two blocks have no single flag:
 .TP
 \f[B]sorting\f[R]

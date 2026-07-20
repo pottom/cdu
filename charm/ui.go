@@ -65,6 +65,11 @@ type UI struct {
 	showItemCount bool
 	showMtime     bool
 
+	// infoOpen is whether the `i` item-info pane is showing. On by default, toggled
+	// with i, and persisted like the columns (t then s) — the live state, which the
+	// model reads and viewSettings writes.
+	infoOpen bool
+
 	// foldersFirst floats directories to the top of every listing. Off by default:
 	// the disk usage default is biggest-first, folder or file.
 	foldersFirst bool
@@ -129,6 +134,9 @@ func CreateUI(
 		sortBy:      fs.SortBySize,
 		sortOrder:   fs.SortDesc,
 		theme:       theme.Charm(),
+		// The info pane is on by default; WithInfoPane (from the config's `info` key)
+		// overrides it below, and i toggles it at runtime.
+		infoOpen: true,
 	}
 	for _, o := range opts {
 		o(ui)

@@ -249,11 +249,9 @@ type model struct {
 	helpOffset int
 	helpCursor int
 
-	// infoOpen is the `i` item-info pane: when set, a pane docked at the foot of the
-	// list shows the selected item's metadata and follows the cursor. infoStat caches
-	// the parts an os.Lstat gives (mode, owner), refreshed on selection change so View
-	// does no I/O.
-	infoOpen bool
+	// infoStat caches the item-info pane's stat — the parts an os.Lstat gives (mode,
+	// owner), refreshed on selection change so View does no I/O. Whether the pane is
+	// open is ui.infoOpen, since it persists to the config like the column toggles.
 	infoStat itemStat
 
 	// dupGroups is the result of the last duplicate search (F): sets of
@@ -318,10 +316,6 @@ func newModel(ui *UI) *model {
 		// that does not say otherwise.
 		confirmFrom: screenBrowse,
 		viewerFrom:  screenBrowse,
-		// The item-info pane is on by default — it is compact and always useful; `i`
-		// toggles it off for someone who wants the list rows back, and it hides itself
-		// when the terminal is too short to spare them.
-		infoOpen: true,
 		// Anything worth saying about the theme or the config is said here rather
 		// than on stderr, which the alternate screen would wipe before it could be
 		// read.

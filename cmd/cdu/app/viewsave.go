@@ -25,6 +25,7 @@ func (a *App) saveView(v charm.ViewSettings) (string, error) {
 	a.Flags.ShowItemCount = v.ShowItemCount
 	a.Flags.ShowMTime = v.ShowMTime
 	a.Flags.FoldersFirst = v.FoldersFirst
+	a.Flags.Info = v.InfoPane
 	if v.ThemeName != "" {
 		// The preset only — any token overrides the user hand-wrote stay, the way
 		// --theme leaves them, so saving a picked theme keeps their tweaks.

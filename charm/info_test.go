@@ -1,6 +1,7 @@
 package charm
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,15 +15,15 @@ import (
 // The pane is on by default; i toggles it off and back on.
 func TestInfoToggle(t *testing.T) {
 	m := benchModel(5)
-	require.True(t, m.infoOpen, "the pane is on by default")
+	require.True(t, m.ui.infoOpen, "the pane is on by default")
 	require.Equal(t, infoPaneLines, m.infoPaneHeight(), "open with room: the pane's fixed height")
 
 	m = press(t, m, "i")
-	assert.False(t, m.infoOpen, "i toggles it off")
+	assert.False(t, m.ui.infoOpen, "i toggles it off")
 	assert.Equal(t, 0, m.infoPaneHeight(), "closed: no pane")
 
 	m = press(t, m, "i")
-	assert.True(t, m.infoOpen, "i again toggles it on")
+	assert.True(t, m.ui.infoOpen, "i again toggles it on")
 }
 
 // The pane takes its height out of the list, so scrolling shrinks with it — the whole
@@ -60,15 +61,32 @@ func TestInfoFollowsTheCursor(t *testing.T) {
 	assert.Equal(t, second, m.infoStat.item, "and the cached stat is refreshed for it")
 }
 
+// The pane's on/off is a saved view setting: WithInfoPane starts it from the config,
+// and the toggled state is what t then s writes back.
+func TestInfoPanePersists(t *testing.T) {
+	closed := CreateUI(io.Discard, true, false, false, false, WithInfoPane(false))
+	assert.False(t, closed.infoOpen, "WithInfoPane(false) starts the pane closed")
+	assert.False(t, closed.viewSettings().InfoPane, "and the saved view reflects it")
+
+	open := CreateUI(io.Discard, true, false, false, false, WithInfoPane(true))
+	assert.True(t, open.viewSettings().InfoPane, "on is saved as on")
+
+	// Toggling at runtime is what a t-then-s save would then persist.
+	m := benchModel(5)
+	require.True(t, m.ui.viewSettings().InfoPane, "on by default")
+	m = press(t, m, "i")
+	assert.False(t, m.ui.viewSettings().InfoPane, "the saved view carries the toggled-off pane")
+}
+
 // The ../ row has nothing to describe, so i does not open a blank pane on it.
 func TestInfoDoesNotOpenOnTheParentRow(t *testing.T) {
 	m, _ := subdirModel(t)
 	m.cursor = 0 // the ../ row
 
 	m = press(t, m, "i") // close the default-on pane
-	require.False(t, m.infoOpen)
+	require.False(t, m.ui.infoOpen)
 	m = press(t, m, "i") // and it will not re-open where there is nothing to show
-	assert.False(t, m.infoOpen, "i is inert on the ../ row")
+	assert.False(t, m.ui.infoOpen, "i is inert on the ../ row")
 }
 
 // statPath reads the mode (and, on Unix, the numeric owner) off a real file.

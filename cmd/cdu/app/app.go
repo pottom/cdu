@@ -75,6 +75,7 @@ type Flags struct {
 	ShowItemCount      bool     `yaml:"show-item-count"`
 	ShowMTime          bool     `yaml:"show-mtime"`
 	FoldersFirst       bool     `yaml:"folders-first"`
+	Info               bool     `yaml:"info"`
 	NoColor            bool     `yaml:"no-color"`
 	Mouse              bool     `yaml:"mouse"`
 	Icons              bool     `yaml:"icons"`
@@ -494,6 +495,9 @@ func (a *App) getCharmOptions() []charm.Option {
 	if a.Flags.FoldersFirst {
 		opts = append(opts, func(ui *charm.UI) { ui.SetFoldersFirst() })
 	}
+	// Unconditional, unlike the toggles above: the pane is on by default, so the flag
+	// (default true) has to be able to turn it off, not only on.
+	opts = append(opts, charm.WithInfoPane(a.Flags.Info))
 	if a.Flags.Sorting.Order != "" || a.Flags.Sorting.By != "" {
 		opts = append(opts, func(ui *charm.UI) {
 			ui.SetDefaultSorting(a.Flags.Sorting.By, a.Flags.Sorting.Order)

@@ -181,6 +181,7 @@ func init() {
 	flags.BoolVarP(&af.NoColor, "no-color", "c", false, "Do not use colorized output")
 	flags.BoolVarP(&af.ShowItemCount, "show-item-count", "C", false, "Show number of items in directory")
 	flags.BoolVarP(&af.ShowMTime, "show-mtime", "M", false, "Show latest mtime of items in directory")
+	flags.BoolVar(&af.Info, "info", true, "Show the item-info pane at the foot of the list (toggle with i)")
 	// Persistent, not local: `cdu themes --theme ember` has to reach the listing
 	// so it can mark which theme is in use, and a subcommand does not inherit
 	// root's local flags. No backticks in the usage string — cobra reads those as
