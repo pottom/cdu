@@ -40,6 +40,8 @@ phosphor, mono, or a user theme). See **cdu themes**.
 
 **\--icons**\[=false\] Show Nerd Font file icons (needs a patched font)
 
+**\--info**\[=true\] Show the item-info pane at the foot of the list (toggle with i)
+
 **-i**, **\--ignore-dirs**=\[/proc,/dev,/sys,/run\]
     Paths to ignore (separated by comma).
     Supports both absolute and relative paths.
@@ -175,9 +177,10 @@ The Charm interface (the default) is driven by:
     column menu (then **a** apparent size, **B** bars, **c** count, **m** mtime; **s**
     saves the view). **a B c m** also work directly.
 
-**p** / **v** / **o**
+**p** / **i** / **v** / **o**
 
-:   Theme picker (previews live) / view a file / open a file in its default app.
+:   Theme picker (previews live) / toggle the item-info pane / view a file / open a
+    file in its default app.
 
 **space** / **M** / **u**
 
@@ -202,8 +205,8 @@ says so; **\--write-config** takes it over into cdu's own file.
 
 Every persistent long flag is also a config key under its flag name — for example
 **show-apparent-size**, **show-item-count**, **show-mtime**, **folders-first**,
-**icons**, **mouse**, **no-hidden**, and the **ignore-dirs** list. Two blocks have no
-single flag:
+**info** (the item pane, on by default), **icons**, **mouse**, **no-hidden**, and the
+**ignore-dirs** list. Two blocks have no single flag:
 
 **sorting**
 

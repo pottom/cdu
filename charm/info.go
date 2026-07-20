@@ -36,6 +36,12 @@ type itemStat struct {
 	ok    bool
 }
 
+// WithInfoPane sets whether the item-info pane starts open, from the config's `info`
+// key (default true). i toggles it at runtime, and t then s saves the choice back.
+func WithInfoPane(on bool) Option {
+	return func(ui *UI) { ui.infoOpen = on }
+}
+
 // infoScreen reports whether the current screen is a list the info pane can attach to.
 func (m *model) infoScreen() bool {
 	//nolint:exhaustive // the info pane attaches to the lists; every other screen is false
@@ -75,10 +81,10 @@ func (m *model) infoTarget() fs.Item {
 // toggleInfo opens or closes the pane. It is inert where there is nothing to describe,
 // so `i` on an empty list or the ../ row does not open a blank pane.
 func (m *model) toggleInfo() {
-	if !m.infoOpen && m.infoTarget() == nil {
+	if !m.ui.infoOpen && m.infoTarget() == nil {
 		return
 	}
-	m.infoOpen = !m.infoOpen
+	m.ui.infoOpen = !m.ui.infoOpen
 	m.syncInfoStat()
 }
 
@@ -102,7 +108,7 @@ func (m *model) afterInput(next tea.Model, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 // pane follows the cursor. It runs after a key or click, never in View, so the one
 // os.Lstat it does stays off the render path.
 func (m *model) syncInfoStat() {
-	if !m.infoOpen {
+	if !m.ui.infoOpen {
 		return
 	}
 	it := m.infoTarget()
@@ -138,7 +144,7 @@ func statPath(path string) itemStat {
 // infoPaneHeight is the pane's height when it is open on a list with room for it, zero
 // otherwise. It never leaves the list fewer than one row.
 func (m *model) infoPaneHeight() int {
-	if !m.infoOpen || !m.infoScreen() || m.infoTarget() == nil {
+	if !m.ui.infoOpen || !m.infoScreen() || m.infoTarget() == nil {
 		return 0
 	}
 	// Room is computed from height and chrome directly: visibleLines() subtracts this,

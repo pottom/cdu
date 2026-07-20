@@ -24,7 +24,7 @@ import (
 // It is a struct of plain types rather than the Flags struct because charm
 // cannot see that — cmd/cdu/app imports charm, not the other way round. That is
 // also why the write goes through a callback: charm does not know the rest of
-// the config, and a writer that only knew these six fields would silently drop
+// the config, and a writer that only knew the fields it owns would silently drop
 // everything else in the file.
 type ViewSettings struct {
 	ShowApparentSize bool
@@ -32,6 +32,7 @@ type ViewSettings struct {
 	ShowItemCount    bool
 	ShowMTime        bool
 	FoldersFirst     bool
+	InfoPane         bool
 	// ThemeName is the picked preset, written to the config's theme.preset. Empty
 	// leaves whatever was there — an interface that never opened the picker must not
 	// overwrite a theme the user set by hand.
@@ -59,6 +60,7 @@ func (ui *UI) viewSettings() ViewSettings {
 		ShowItemCount:    ui.showItemCount,
 		ShowMTime:        ui.showMtime,
 		FoldersFirst:     ui.foldersFirst,
+		InfoPane:         ui.infoOpen,
 		ThemeName:        ui.theme.Name,
 		SortBy:           sortByYAML(ui.sortBy),
 		SortOrder:        sortOrderYAML(ui.sortOrder),
