@@ -83,6 +83,10 @@ type UI struct {
 	// saving is unavailable, and the key says so.
 	save func(ViewSettings) (string, error)
 
+	// saveInfo persists the info pane's on/off on the spot (i), writing only the info
+	// key. Separate from save because the pane is a preference, not a view you try.
+	saveInfo func(on bool) (string, error)
+
 	// theme supplies every colour the renderer uses. The constructor plants the
 	// default, so no render path has to ask whether a theme was configured.
 	theme theme.Theme

@@ -50,7 +50,6 @@ func TestSavingTheViewFromTheColumnMenu(t *testing.T) {
 		ShowRelativeSize: true,
 		ShowItemCount:    true,
 		ShowMTime:        false,
-		InfoPane:         true,
 		ThemeName:        "charm",
 		SortBy:           "mtime",
 		SortOrder:        "asc",

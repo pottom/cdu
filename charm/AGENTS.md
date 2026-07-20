@@ -213,11 +213,13 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   it is not a modal drawn over the rows. It shows the selected item's mode, owner,
   mtime, and disk-vs-apparent size, and follows the cursor. It hides itself when the
   terminal is too short to spare the rows, and `i` reclaims them by hand.
-- **Whether it is open is a saved view setting, like the columns.** The live state is
-  `ui.infoOpen` (not a model field, so `viewSettings` can read it), started from the
-  config's `info` key via `WithInfoPane` (default on), and written back by `t` then `s`
-  — a preference you decide, not one that resets each launch. `--info=false` starts it
-  closed.
+- **Whether it is open is persisted the moment `i` is pressed**, not via `t` then `s`.
+  The pane is a plain preference, not a per-directory view you try, so it saves itself:
+  `toggleInfo` returns a `tea.Cmd` that calls the `WithInfoSaver` callback (`app.saveInfo`),
+  which writes only the `info` key and leaves the rest of the config alone — so toggling
+  the pane never commits an uncommitted column try. The live state is `ui.infoOpen`
+  (not a model field), started from the config's `info` key via `WithInfoPane` (default
+  on); `--info=false` starts it closed. Saving is silent unless it fails.
 - **The stat is cached and refreshed off the render path, never in View.** The mode
   and owner need an `os.Lstat`; `syncInfoStat` (from `afterInput` after a key or click,
   and from `enterDir`) refreshes the cache only when the selection changes, so `View`
