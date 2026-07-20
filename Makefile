@@ -4,9 +4,10 @@ CMD := cmd/cdu
 
 # cdu carries its own version, tagged cdu-vX.Y.Z so it is never confused with the gdu
 # release tags git inherited from the fork (v1.0.0 … v5.36.1). --match keeps git
-# describe on cdu's own tags; --always falls back to a short commit on an untagged dev
-# tree; the "cdu-" prefix is stripped so the stamp reads vX.Y.Z, not cdu-vX.Y.Z.
-RAW_VERSION := $(shell git describe --tags --match 'cdu-v*' 2>/dev/null)
+# describe on cdu's own tags; --dirty marks a build from a modified tree, so a dev
+# binary never claims to be a clean release; the "cdu-" prefix is stripped so the stamp
+# reads vX.Y.Z, not cdu-vX.Y.Z. An untagged tree falls through to the -dev string below.
+RAW_VERSION := $(shell git describe --tags --match 'cdu-v*' --dirty 2>/dev/null)
 VERSION := $(subst cdu-,,$(RAW_VERSION))
 # Until the first cdu-v tag is cut, an untagged tree is the version under development:
 # a clean "-dev" string rather than a bare commit, so the header reads sensibly. Once
