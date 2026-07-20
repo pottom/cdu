@@ -32,7 +32,6 @@ type ViewSettings struct {
 	ShowItemCount    bool
 	ShowMTime        bool
 	FoldersFirst     bool
-	InfoPane         bool
 	// ThemeName is the picked preset, written to the config's theme.preset. Empty
 	// leaves whatever was there — an interface that never opened the picker must not
 	// overwrite a theme the user set by hand.
@@ -60,7 +59,6 @@ func (ui *UI) viewSettings() ViewSettings {
 		ShowItemCount:    ui.showItemCount,
 		ShowMTime:        ui.showMtime,
 		FoldersFirst:     ui.foldersFirst,
-		InfoPane:         ui.infoOpen,
 		ThemeName:        ui.theme.Name,
 		SortBy:           sortByYAML(ui.sortBy),
 		SortOrder:        sortOrderYAML(ui.sortOrder),

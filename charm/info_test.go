@@ -61,21 +61,29 @@ func TestInfoFollowsTheCursor(t *testing.T) {
 	assert.Equal(t, second, m.infoStat.item, "and the cached stat is refreshed for it")
 }
 
-// The pane's on/off is a saved view setting: WithInfoPane starts it from the config,
-// and the toggled state is what t then s writes back.
+// The config's info key sets the pane's start state; pressing i persists the new state
+// on the spot, so the choice survives a restart without a separate save step.
 func TestInfoPanePersists(t *testing.T) {
 	closed := CreateUI(io.Discard, true, false, false, false, WithInfoPane(false))
 	assert.False(t, closed.infoOpen, "WithInfoPane(false) starts the pane closed")
-	assert.False(t, closed.viewSettings().InfoPane, "and the saved view reflects it")
 
-	open := CreateUI(io.Discard, true, false, false, false, WithInfoPane(true))
-	assert.True(t, open.viewSettings().InfoPane, "on is saved as on")
+	var saved []bool
+	ui := CreateUI(io.Discard, true, false, false, false,
+		WithInfoSaver(func(on bool) (string, error) { saved = append(saved, on); return "cfg", nil }))
+	dir := benchDir(5)
+	m := newModel(ui)
+	m.topDir = dir
+	m.enterDir(dir)
+	m.scr = screenBrowse
+	m.width, m.height, m.haveSize = 120, 40, true
+	require.True(t, m.ui.infoOpen, "on by default")
 
-	// Toggling at runtime is what a t-then-s save would then persist.
-	m := benchModel(5)
-	require.True(t, m.ui.viewSettings().InfoPane, "on by default")
-	m = press(t, m, "i")
-	assert.False(t, m.ui.viewSettings().InfoPane, "the saved view carries the toggled-off pane")
+	next, cmd := m.Update(key("i"))
+	m = next.(*model)
+	require.False(t, m.ui.infoOpen, "i toggles it off")
+	require.NotNil(t, cmd, "and returns a save command")
+	cmd() // run the persist
+	assert.Equal(t, []bool{false}, saved, "i saved the off state immediately, no t-then-s needed")
 }
 
 // The ../ row has nothing to describe, so i does not open a blank pane on it.

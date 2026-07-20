@@ -25,7 +25,6 @@ func (a *App) saveView(v charm.ViewSettings) (string, error) {
 	a.Flags.ShowItemCount = v.ShowItemCount
 	a.Flags.ShowMTime = v.ShowMTime
 	a.Flags.FoldersFirst = v.FoldersFirst
-	a.Flags.Info = v.InfoPane
 	if v.ThemeName != "" {
 		// The preset only — any token overrides the user hand-wrote stay, the way
 		// --theme leaves them, so saving a picked theme keeps their tweaks.
@@ -42,6 +41,29 @@ func (a *App) saveView(v charm.ViewSettings) (string, error) {
 		return "", err
 	}
 
+	data, err := yaml.Marshal(a.Flags)
+	if err != nil {
+		return "", fmt.Errorf("building the config: %w", err)
+	}
+	if err := config.WriteFile(path, data); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// saveInfo persists just the item-info pane's on/off, for i.
+//
+// Unlike saveView it does not fold a whole ViewSettings in: it sets Info alone and
+// writes the Flags as they stand, so toggling the pane never commits an uncommitted
+// column try. Same cdu-owned path and whole-file write as saveView, so nothing else in
+// the config is lost.
+func (a *App) saveInfo(on bool) (string, error) {
+	a.Flags.Info = on
+
+	path, err := config.Path()
+	if err != nil {
+		return "", err
+	}
 	data, err := yaml.Marshal(a.Flags)
 	if err != nil {
 		return "", fmt.Errorf("building the config: %w", err)

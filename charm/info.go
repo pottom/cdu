@@ -37,10 +37,22 @@ type itemStat struct {
 }
 
 // WithInfoPane sets whether the item-info pane starts open, from the config's `info`
-// key (default true). i toggles it at runtime, and t then s saves the choice back.
+// key (default true). i toggles it at runtime.
 func WithInfoPane(on bool) Option {
 	return func(ui *UI) { ui.infoOpen = on }
 }
+
+// WithInfoSaver supplies the function that persists the pane's on/off to the config.
+// The pane is a plain preference, not a per-directory view you try — so unlike the
+// columns (t then s), i saves it on the spot, writing only the info key and leaving the
+// rest of the view alone.
+func WithInfoSaver(save func(on bool) (string, error)) Option {
+	return func(ui *UI) { ui.saveInfo = save }
+}
+
+// infoSavedMsg is the result of persisting the pane setting; a failure is worth a word,
+// a success is silent — flashing "saved" on every toggle would be noise.
+type infoSavedMsg struct{ err error }
 
 // infoScreen reports whether the current screen is a list the info pane can attach to.
 func (m *model) infoScreen() bool {
@@ -80,12 +92,23 @@ func (m *model) infoTarget() fs.Item {
 
 // toggleInfo opens or closes the pane. It is inert where there is nothing to describe,
 // so `i` on an empty list or the ../ row does not open a blank pane.
-func (m *model) toggleInfo() {
+func (m *model) toggleInfo() tea.Cmd {
 	if !m.ui.infoOpen && m.infoTarget() == nil {
-		return
+		return nil
 	}
 	m.ui.infoOpen = !m.ui.infoOpen
 	m.syncInfoStat()
+	if m.ui.saveInfo == nil {
+		return nil
+	}
+	// Persist off the render loop: a config write is small, but $HOME can be a network
+	// mount — the same rule the view save follows.
+	on := m.ui.infoOpen
+	save := m.ui.saveInfo
+	return func() tea.Msg {
+		_, err := save(on)
+		return infoSavedMsg{err: err}
+	}
 }
 
 // ownerField is a numeric id with its name in parentheses, or the number alone when

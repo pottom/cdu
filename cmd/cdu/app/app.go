@@ -469,6 +469,7 @@ func (a *App) getCharmOptions() []charm.Option {
 		charm.WithNotice(a.Flags.ConfigNotice),
 		charm.WithWarnings(a.Flags.ThemeProblems...),
 		charm.WithConfigSaver(a.saveView),
+		charm.WithInfoSaver(a.saveInfo),
 		charm.WithVersion(build.Version),
 	}
 	if a.Flags.NoUnicode {

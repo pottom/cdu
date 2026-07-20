@@ -64,7 +64,8 @@ func (m *model) handleQueueKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyEnter, keyRight, "l":
 		return m.revealQueueItem()
 	case "i":
-		m.toggleInfo()
+		cmd := m.toggleInfo()
+		return m, cmd
 	case "v":
 		return m.openViewer()
 	case "o":
