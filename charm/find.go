@@ -171,7 +171,8 @@ func (m *model) handleFindKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.markUnderCursor()
 		m.moveFindCursor(1)
 	case "i":
-		m.toggleInfo()
+		cmd := m.toggleInfo()
+		return m, cmd
 	case "u":
 		m.unmarkAll()
 	case "M":

@@ -509,6 +509,14 @@ func (m *model) handleResultMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyViewSaved(msg)
 		return m, nil
 
+	case infoSavedMsg:
+		// Silent on success; a failed write is worth saying so the setting is not
+		// silently forgotten.
+		if msg.err != nil {
+			m.status, m.statusIsError = "could not save the info-pane setting: "+msg.err.Error(), true
+		}
+		return m, nil
+
 	case disksMsg:
 		m.applyDisks(msg)
 		return m, nil
@@ -690,7 +698,8 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		return m.openThemePicker()
 	case "i":
-		m.toggleInfo()
+		cmd := m.toggleInfo()
+		return m, cmd
 	case keyEscape:
 		// Nothing is deeper than the browser to back out of, so esc here cancels the
 		// selection instead — the whole marked set at once, the way esc drops any
