@@ -249,6 +249,13 @@ type model struct {
 	helpOffset int
 	helpCursor int
 
+	// infoOpen is the `i` item-info pane: when set, a pane docked at the foot of the
+	// list shows the selected item's metadata and follows the cursor. infoStat caches
+	// the parts an os.Lstat gives (mode, owner), refreshed on selection change so View
+	// does no I/O.
+	infoOpen bool
+	infoStat itemStat
+
 	// dupGroups is the result of the last duplicate search (F): sets of
 	// byte-identical files, most reclaimable first. dupRows is that flattened for
 	// the screen — a header per group, then its files. dupMarked is every file in
@@ -311,6 +318,10 @@ func newModel(ui *UI) *model {
 		// that does not say otherwise.
 		confirmFrom: screenBrowse,
 		viewerFrom:  screenBrowse,
+		// The item-info pane is on by default — it is compact and always useful; `i`
+		// toggles it off for someone who wants the list rows back, and it hides itself
+		// when the terminal is too short to spare them.
+		infoOpen: true,
 		// Anything worth saying about the theme or the config is said here rather
 		// than on stderr, which the alternate screen would wipe before it could be
 		// read.
@@ -427,10 +438,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		return m.handleKey(msg)
+		// afterInput refreshes the info pane's cached stat: the pane follows the cursor,
+		// off the render path.
+		return m.afterInput(m.handleKey(msg))
 
 	case tea.MouseMsg:
-		return m.handleMouse(msg)
+		return m.afterInput(m.handleMouse(msg))
 
 	case tickMsg:
 		// The same clock drives the scan line and a deleting row. Nothing is ticking
@@ -682,6 +695,8 @@ func (m *model) handleBrowseAction(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openQueue()
 	case "p":
 		return m.openThemePicker()
+	case "i":
+		m.toggleInfo()
 	case keyEscape:
 		// Nothing is deeper than the browser to back out of, so esc here cancels the
 		// selection instead — the whole marked set at once, the way esc drops any
@@ -820,6 +835,9 @@ func (m *model) enterDir(dir fs.Item) {
 	}
 	m.filtering, m.filter, m.filtered = false, "", nil
 	m.offset = 0
+	// Refresh the info pane for the row the cursor lands on, so it is current the moment
+	// the directory shows — before any key, which is all afterInput would catch.
+	m.syncInfoStat()
 }
 
 // isParentRow reports whether an item is the ../ row — the current directory's

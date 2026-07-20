@@ -25,6 +25,7 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
 - `filter.go`, `fuzzy.go` — the `/` fuzzy filter and its match highlighting.
 - `viewer.go` — the `v` file pager, with the binary sniff and the read cap.
 - `open.go` — `o`: open a file in the operating system's default app.
+- `info.go` (+ `_unix`/`_other`) — `i`: the live item-info pane at the foot of the list.
 - `mouse.go` — wheel-scroll and click-to-select, behind `--mouse`.
 - `disks.go`, `diskgroup.go` — `cdu -d`: the device table, grouped by disk.
 - `topfiles.go` — `T`: the largest files anywhere in the scan.
@@ -204,6 +205,22 @@ cdu-owned. This is a new directory, so it never conflicts on an upstream merge.
   handling the password. A batch collects its permission failures and offers the
   whole set to one sudo pass at the end.
 
+### The item-info pane
+
+- **`i` toggles a live info pane docked at the foot of the list, and it is on by
+  default.** A rule fences it off above and below; the list shrinks to make room —
+  `infoPaneHeight` is subtracted in `visibleLines`, so scrolling shrinks with it, and
+  it is not a modal drawn over the rows. It shows the selected item's mode, owner,
+  mtime, and disk-vs-apparent size, and follows the cursor. It hides itself when the
+  terminal is too short to spare the rows, and `i` reclaims them by hand.
+- **The stat is cached and refreshed off the render path, never in View.** The mode
+  and owner need an `os.Lstat`; `syncInfoStat` (from `afterInput` after a key or click,
+  and from `enterDir`) refreshes the cache only when the selection changes, so `View`
+  does no I/O. The size/usage/mtime come straight from the engine's item.
+- **Owner names are safe to resolve because CGO is off.** `os/user` then uses the
+  pure-Go path that reads `/etc/passwd`/`/etc/group` — a local file, not a networked
+  directory service that could hang. Windows has no uid/gid (`info_other.go`).
+
 ### Modes, filter and columns
 
 - **A mode swallows every key, including `q`.** The sort menu, the column menu and
@@ -362,8 +379,8 @@ on state (`M`/`u` while marked, `U` while there is a trash to undo) appear only 
 
 Keys: `↑↓`/`jk` move, `→`/`enter` open, `←`/`h` back (the `../` row goes up too),
 `g`/`G` top/bottom, `/` fuzzy filter, `s` sort menu, `t` column menu (or direct
-`a`/`B`/`c`/`m`; `t` then `s` saves the view), `p` theme picker, `v` view file, `o`
-open in the default app, `space` mark, `M` delete queue, `u` unmark all, `d` trash,
+`a`/`B`/`c`/`m`; `t` then `s` saves the view), `p` theme picker, `i` item-info pane, `v` view file,
+`o` open in the default app, `space` mark, `M` delete queue, `u` unmark all, `d` trash,
 `D` delete permanently, `e` empty a file, `U` undo the last trash, `r` rescan, `f`
 find (tree-wide), `T` largest files, `F` find duplicates, `?` help, `esc` back /
 cancel a scan / clear marks.

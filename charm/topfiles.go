@@ -91,6 +91,8 @@ func (m *model) handleTopKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.markUnderCursor()
 		m.moveTopCursor(1)
+	case "i":
+		m.toggleInfo()
 	case "u":
 		m.unmarkAll()
 	case "M":
@@ -243,6 +245,9 @@ func (m *model) viewTop() string {
 		parts = append(parts, m.viewHeader())
 	}
 	parts = append(parts, m.viewTopList())
+	if pane := m.infoPane(); pane != "" {
+		parts = append(parts, pane)
+	}
 	if m.footerHeight() > 0 {
 		parts = append(parts, m.viewFooter())
 	}

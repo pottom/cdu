@@ -114,9 +114,11 @@ func (m *model) linesPerEntry() int {
 	return 2
 }
 
-// visibleLines is the height the list has to render into.
+// visibleLines is the height the list has to render into — the space between the
+// header and footer, less the item-info pane when it is open, so the list shrinks to
+// make room for it and scrolling shrinks with it.
 func (m *model) visibleLines() int {
-	n := m.height - m.headerHeight() - m.footerHeight()
+	n := m.height - m.headerHeight() - m.footerHeight() - m.infoPaneHeight()
 	if n < 1 {
 		return 1
 	}
@@ -330,6 +332,9 @@ func (m *model) viewBrowse() string {
 		parts = append(parts, m.viewHeader())
 	}
 	parts = append(parts, m.viewList())
+	if pane := m.infoPane(); pane != "" {
+		parts = append(parts, pane)
+	}
 	if m.footerHeight() > 0 {
 		parts = append(parts, m.viewFooter())
 	}
@@ -891,6 +896,7 @@ var (
 		{key: "→", label: "open"},
 		{key: "←", label: "back"},
 		{key: "d", label: "trash", drop: 2},
+		{key: "i", label: "info", drop: 3},
 		{key: "?", label: "help", drop: 1},
 		{key: "q", label: "quit"},
 	}

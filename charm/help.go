@@ -80,6 +80,11 @@ var helpGroups = []helpGroup{
 		{"B", "bars: largest item ⇄ this directory", "Switch the bars between sizing against the largest item and against this whole directory's total."},
 		{"c m", "item count, mtime", "Show the item-count and modified-time columns. Also reachable from the sort and column menus."},
 		{"p", "themes — preview and keep one", "Open the theme picker. Moving the cursor previews each theme live; enter keeps and saves it, esc restores."},
+		{
+			keys:   "i",
+			what:   "item info — a live panel at the foot of the list",
+			detail: "Toggle a panel below the list with the selected item's mode, owner, mtime, and disk vs apparent size. It follows the cursor; i again closes it.",
+		},
 	}},
 	{"Elsewhere", []helpEntry{
 		{"T", "the largest files, any depth", "List the largest files anywhere under here — deepest search, biggest first."},
