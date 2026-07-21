@@ -402,6 +402,7 @@ blocks.
 
     go test ./charm/...
     go test ./charm/ -bench=. -benchtime=200x -run=XXX
+    go test ./charm/ -run TestScreenGolden -update-golden   # after an intended visual change
 
 The suite covers navigation, the never-panic rule across seven terminal sizes
 (including 0×0 and 1×1), windowing under a 5000-row listing, exact frame height on
@@ -411,8 +412,17 @@ toggles, the fuzzy matcher, the viewer's binary sniff and read cap, mouse
 scroll/click hit-testing, the colour/unicode audit across profiles, and a full
 Bubble Tea program run driven headlessly with injected input and output.
 
-`View()` costs ~0.28 ms and must stay flat as directory size grows — that number
-being identical at 100 and 10,000 rows is the standing proof the list is windowed.
+`golden_test.go` adds exact-render snapshots (`testdata/*.golden`): the browser on
+each of the five themes, a narrow terminal, and the help screen. They catch a visual
+regression the property tests cannot — a shifted colour or column. Regenerate them on
+an intended change with `-update-golden` and read the diff; a golden that changed
+without your meaning it to is the bug. The info pane is off in them, so they do not
+depend on an `os.Lstat`.
+
+`View()` must stay flat as directory size grows — the render benchmark being the same
+at 100 and 10,000 rows is the standing proof the list is windowed. CI runs it as a
+tripwire (test.yml `bench`), not a hard gate: a shared runner is too noisy for a
+threshold.
 
 ## Child DOX Index
 

@@ -1,0 +1,40 @@
+[1;38;2;255;95;209mcdu ✦[0m  [38;2;79;240;192mevery key, one screen[0m                                                                                            
+[38;2;125;115;158m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[1;38;2;255;95;209m  Navigate                                                [0m    [1;38;2;255;95;209m  Change the disk                                         [0m
+[1;38;2;255;255;255;48;2;36;28;52m▸ ↑ ↓  k j   move                                         [0m      [1;38;2;255;95;209md         [0m [38;2;125;115;158mtrash it — does not free space               [0m
+  [1;38;2;255;95;209m→ ↵  l    [0m [38;2;125;115;158menter directory                              [0m      [1;38;2;255;95;209mD         [0m [38;2;125;115;158mdelete for good — frees space, no undo       [0m
+  [1;38;2;255;95;209m← h       [0m [38;2;125;115;158mgo to parent — at the root, scan the one abo…[0m      [1;38;2;255;95;209me         [0m [38;2;125;115;158mempty a file                                 [0m
+  [1;38;2;255;95;209mg G       [0m [38;2;125;115;158mjump to top / bottom                         [0m      [1;38;2;255;95;209mspace     [0m [38;2;125;115;158mmark for a batch delete                      [0m
+  [1;38;2;255;95;209mpgup pgdn [0m [38;2;125;115;158mpage                                         [0m      [1;38;2;255;95;209mu         [0m [38;2;125;115;158munmark all — clear the whole selection       [0m
+  [1;38;2;255;95;209m/         [0m [38;2;125;115;158mfilter this directory (fuzzy, live)          [0m      [1;38;2;255;95;209mU         [0m [38;2;125;115;158mundo the last trash                          [0m
+  [1;38;2;255;95;209mf         [0m [38;2;125;115;158mfind files by name, any depth (*.mkv)        [0m      [1;38;2;255;95;209mr         [0m [38;2;125;115;158mrescan                                       [0m
+                                                                [1;38;2;255;95;209mM         [0m [38;2;125;115;158mthe delete queue — review, then delete the m…[0m
+[1;38;2;255;95;209m  Change the view                                         [0m                                                              
+  [1;38;2;255;95;209ms         [0m [38;2;125;115;158msort, then s n c m — or d for folders first  [0m    [1;38;2;255;95;209m  Elsewhere                                               [0m
+  [1;38;2;255;95;209mt         [0m [38;2;125;115;158mcolumns, then a B c m — or s to save         [0m      [1;38;2;255;95;209mT         [0m [38;2;125;115;158mthe largest files, any depth                 [0m
+  [1;38;2;255;95;209ma         [0m [38;2;125;115;158mapparent size ⇄ disk usage                   [0m      [1;38;2;255;95;209mF         [0m [38;2;125;115;158mfind duplicate files (reads them)            [0m
+  [1;38;2;255;95;209mB         [0m [38;2;125;115;158mbars: largest item ⇄ this directory          [0m      [1;38;2;255;95;209mv         [0m [38;2;125;115;158mview a file                                  [0m
+  [1;38;2;255;95;209mc m       [0m [38;2;125;115;158mitem count, mtime                            [0m      [1;38;2;255;95;209mo         [0m [38;2;125;115;158mopen a file in its default app               [0m
+  [1;38;2;255;95;209mp         [0m [38;2;125;115;158mthemes — preview and keep one                [0m      [1;38;2;255;95;209m?         [0m [38;2;125;115;158mthis screen                                  [0m
+  [1;38;2;255;95;209mi         [0m [38;2;125;115;158mitem info — a live panel at the foot of the …[0m      [1;38;2;255;95;209mesc       [0m [38;2;125;115;158mback — cancel a scan, or clear the marks     [0m
+                                                                [1;38;2;255;95;209mq         [0m [38;2;125;115;158mquit                                         [0m
+                                                                                                                        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;2;125;115;158m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;2;207;198;239m↑ ↓ k j — Move the cursor one row. The list scrolls to keep it in view.                                                 [0m
+
+[1;38;2;255;95;209m↑↓[0m [38;2;125;115;158mselect[0m  [1;38;2;255;95;209m?[0m [38;2;125;115;158mclose[0m  [1;38;2;255;95;209mesc[0m [38;2;125;115;158mback[0m                                                                                            [38;2;125;115;158m[0m

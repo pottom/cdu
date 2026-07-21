@@ -642,7 +642,7 @@ func (m *model) handleBrowseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveCursor(-m.visibleRows())
 	case "pgdown":
 		m.moveCursor(m.visibleRows())
-	case "right", "l", "enter":
+	case keyRight, "l", "enter":
 		cmd := m.descend()
 		return m, cmd
 	case keyLeft, "h", keyBackspace:

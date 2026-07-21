@@ -63,3 +63,20 @@ jobs:
       uses: actions/checkout@v6
     - name: Run tests
       run: go test -v -covermode=count ./...
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 1.26.x
+    - name: Checkout code
+      uses: actions/checkout@v6
+    # A tripwire, not a gate: it runs the render-hot-path benchmarks so they stay
+    # compilable and a gross regression — I/O sneaking into View, or the list rendering
+    # scaling with directory size — shows up in the log. A shared runner is far too
+    # noisy for a hard pass/fail threshold, so there is none; the standing proof is that
+    # BenchmarkView is flat from 100 to 10,000 rows.
+    - name: Run render benchmarks
+      run: go test -run=^$ -bench=. -benchtime=20x ./charm/
