@@ -347,7 +347,7 @@ func (m *model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cancelConfirm()
 		return m, nil
 
-	case keyLeft, "right", "tab", "h", "l":
+	case keyLeft, keyRight, "tab", "h", "l":
 		// Focus cannot move onto the destructive button while the typed
 		// confirmation is still incomplete: there would be nothing left to stop an
 		// Enter from firing it.
