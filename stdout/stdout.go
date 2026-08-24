@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -20,17 +22,19 @@ import (
 type UI struct {
 	output io.Writer
 	*common.UI
-	red         *color.Color
-	orange      *color.Color
-	blue        *color.Color
-	showItemCnt bool
-	top         int
-	depth       int
-	summarize   bool
-	noPrefix    bool
-	fixedBase   float64
-	fixedSuffix string
-	reverseSort bool
+	red               *color.Color
+	orange            *color.Color
+	blue              *color.Color
+	cyan              *color.Color
+	showItemCnt       bool
+	showSymlinkTarget bool
+	top               int
+	depth             int
+	summarize         bool
+	noPrefix          bool
+	fixedBase         float64
+	fixedSuffix       string
+	reverseSort       bool
 }
 
 var (
@@ -72,10 +76,13 @@ func CreateStdoutUI(
 	}
 	if fixedUnit != "" {
 		ui.SetFixedUnit(fixedUnit)
+	} else if !noPrefix && !useSIPrefix {
+		ui.SetBlockSizeFromEnvironment()
 	}
 	ui.red = color.New(color.FgRed).Add(color.Bold)
 	ui.orange = color.New(color.FgYellow).Add(color.Bold)
 	ui.blue = color.New(color.FgBlue).Add(color.Bold)
+	ui.cyan = color.New(color.FgCyan).Add(color.Bold)
 
 	if ui.top > 0 || ui.depth > 0 {
 		ui.Analyzer = analyze.CreateAnalyzer()
@@ -111,6 +118,11 @@ func (ui *UI) SetFixedUnit(unitChar string) {
 
 func (ui *UI) SetShowItemCount() {
 	ui.showItemCnt = true
+}
+
+// SetShowSymlinkTarget enables displaying the symlink target (name -> target).
+func (ui *UI) SetShowSymlinkTarget(value bool) {
+	ui.showSymlinkTarget = value
 }
 
 func (ui *UI) UseOldProgressRunes() {
@@ -187,6 +199,17 @@ func (ui *UI) ListDevices(getter device.DevicesInfoGetter) error {
 
 // AnalyzePath analyzes recursively disk usage in given path
 func (ui *UI) AnalyzePath(path string, _ fs.Item) error {
+	// When path is a regular file, create a File item directly so that
+	// apparent-size (GetSize) and disk-usage (GetUsage) are both correct.
+	// Running a file through AnalyzeDir + UpdateStats would report the
+	// default 4096-byte directory overhead instead of the real values.
+	info, err := os.Stat(path)
+	if err == nil && info.Mode().IsRegular() {
+		file := analyze.CreateFileItem(filepath.Base(path), info)
+		ui.printTotalItem(file)
+		return nil
+	}
+
 	var (
 		dir             fs.Item
 		wait            sync.WaitGroup
@@ -206,7 +229,11 @@ func (ui *UI) AnalyzePath(path string, _ fs.Item) error {
 	go func() {
 		defer wait.Done()
 		dir = ui.Analyzer.AnalyzeDir(path, ui.CreateIgnoreFunc(), ui.CreateFileTypeFilter())
-		dir.UpdateStats(make(fs.HardLinkedItems, 10))
+		if ui.IsFilteringFiles() {
+			dir.UpdateStatsWithFileFiltering(make(fs.HardLinkedItems, 10))
+		} else {
+			dir.UpdateStats(make(fs.HardLinkedItems, 10))
+		}
 		updateStatsDone <- struct{}{}
 	}()
 
@@ -254,7 +281,12 @@ func (ui *UI) showDir(dir fs.Item) {
 		sortOrder = fs.SortAsc
 	}
 
-	for file := range dir.GetFiles(fs.SortBySize, sortOrder) {
+	sort := fs.SortBySize
+	if ui.ShowApparentSize {
+		sort = fs.SortByApparentSize
+	}
+
+	for file := range dir.GetFiles(sort, sortOrder) {
 		ui.printItem(file)
 	}
 }
@@ -312,14 +344,18 @@ func (ui *UI) printItem(file fs.Item) {
 		size = file.GetUsage()
 	}
 
-	countToDisplay := file.GetItemCount()
-	if file.IsDir() {
-		countToDisplay--
-	}
-
 	name := file.GetName()
 	if file.IsDir() {
 		name = ui.blue.Sprint("/" + file.GetName())
+	}
+
+	// Append symlink target with cyan name (like ls --color)
+	if ui.showSymlinkTarget {
+		if si, ok := file.(fs.SymlinkItem); ok {
+			if target := si.GetSymlinkTarget(); target != "" {
+				name = ui.cyan.Sprint(file.GetName()) + " -> " + target
+			}
+		}
 	}
 
 	if ui.showItemCnt {
@@ -328,7 +364,7 @@ func (ui *UI) printItem(file fs.Item) {
 			lineFormat,
 			string(file.GetFlag()),
 			ui.formatSize(size),
-			ui.formatCount(countToDisplay),
+			ui.formatCount(file.GetItemCount()),
 			name,
 		)
 		return
@@ -427,7 +463,11 @@ func (ui *UI) ReadAnalysis(input io.Reader) error {
 		}
 		runtime.GC()
 
-		dir.UpdateStats(make(fs.HardLinkedItems, 10))
+		if ui.IsFilteringFiles() {
+			dir.UpdateStatsWithFileFiltering(make(fs.HardLinkedItems, 10))
+		} else {
+			dir.UpdateStats(make(fs.HardLinkedItems, 10))
+		}
 
 		if ui.ShowProgress {
 			doneChan <- struct{}{}
@@ -539,6 +579,9 @@ func (ui *UI) formatCount(count int64) string {
 func (ui *UI) formatSize(size int64) string {
 	if ui.noPrefix {
 		return ui.orange.Sprintf("%d", size)
+	}
+	if formatted, ok := ui.FormatBlockSize(size); ok {
+		return ui.orange.Sprint(formatted)
 	}
 	if ui.fixedBase > 0 {
 		val := float64(size) / ui.fixedBase

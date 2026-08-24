@@ -15,6 +15,11 @@ var analyzeParentPath = func(ui *UI, path string, parentDir fs.Item) error {
 }
 
 func (ui *UI) keyPressed(key *tcell.EventKey) *tcell.EventKey {
+	if key.Key() == tcell.KeyExit {
+		ui.handleSignalEvent(key)
+		return nil
+	}
+
 	if ui.handleCtrlZ(key) == nil {
 		return nil
 	}
@@ -43,9 +48,23 @@ func (ui *UI) keyPressed(key *tcell.EventKey) *tcell.EventKey {
 		return ui.handleConfirmation(key)
 	}
 
+	if key.Key() == tcell.KeyCtrlC && ui.cancelScan() {
+		return nil
+	}
+
+	if ui.previewing {
+		return ui.handlePreviewKeys(key)
+	}
+
 	if ui.pages.HasPage("progress") ||
 		ui.pages.HasPage("deleting") ||
-		ui.pages.HasPage("emptying") {
+		ui.pages.HasPage("emptying") ||
+		ui.pages.HasPage("moving to trash") {
+		// allow peeking at the results found so far during a scan
+		if key.Key() == tcell.KeyTab && ui.pages.HasPage("progress") {
+			ui.enterPreview()
+			return nil
+		}
 		return key
 	}
 
@@ -150,21 +169,188 @@ func (ui *UI) handleCtrlZ(key *tcell.EventKey) *tcell.EventKey {
 	return key
 }
 
+// confirmQuitMinScanDuration is the scan time above which quitting asks for
+// confirmation, so a long scan is not lost by an accidental key press.
+const confirmQuitMinScanDuration = 3 * time.Second
+
 func (ui *UI) handleQuit(key *tcell.EventKey) *tcell.EventKey {
 	clearTerminalProgress()
 
+	// do not re-trigger quitting while a confirmation dialog is open
+	if ui.pages.HasPage("confirm") {
+		return key
+	}
+
 	switch key.Rune() {
 	case 'Q':
-		ui.app.Stop()
-		ui.printMarkedPaths()
-		fmt.Fprintf(ui.output, "%s\n", ui.currentDirPath)
+		ui.quit(true)
 		return nil
 	case 'q':
-		ui.app.Stop()
-		ui.printMarkedPaths()
+		ui.quit(false)
 		return nil
 	}
 	return key
+}
+
+// quit asks for confirmation when there are scan results worth protecting,
+// otherwise it quits immediately.
+func (ui *UI) quit(printCurrentDirPath bool) {
+	if ui.shouldConfirmQuit() {
+		ui.confirmQuitDialog(printCurrentDirPath)
+		return
+	}
+	ui.doQuit(printCurrentDirPath)
+}
+
+// shouldConfirmQuit returns true when quitting would discard the work of a scan
+// that took a noticeable amount of time, whether it is still running or already
+// finished.
+func (ui *UI) shouldConfirmQuit() bool {
+	if !ui.confirmQuit {
+		return false
+	}
+	if ui.scanning {
+		return time.Since(ui.scanStart) >= confirmQuitMinScanDuration
+	}
+	return ui.currentDir != nil && ui.scanDuration >= confirmQuitMinScanDuration
+}
+
+func (ui *UI) doQuit(printCurrentDirPath bool) {
+	ui.app.Stop()
+	ui.printMarkedPaths()
+	if printCurrentDirPath {
+		fmt.Fprintf(ui.output, "%s\n", sanitizePathForDisplay(ui.currentDirPath))
+	}
+}
+
+func (ui *UI) confirmQuitDialog(printCurrentDirPath bool) {
+	var text string
+	if ui.scanning {
+		text = "A scan has been running for " +
+			time.Since(ui.scanStart).Round(time.Second).String() + ".\n\n" +
+			"Do you really want to quit gdu and abandon it?"
+	} else {
+		text = "Do you really want to quit gdu?\n\n" +
+			"This scan took " + ui.scanDuration.Round(time.Second).String() +
+			" and the results are not saved.\n" +
+			"Choose \"no\" and press E to export them first."
+	}
+	modal := tview.NewModal().
+		SetText(text).
+		AddButtons([]string{"no", "yes", "don't ask me again"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			ui.pages.RemovePage("confirm")
+			ui.app.SetFocus(ui.table)
+			switch buttonIndex {
+			case 2:
+				ui.confirmQuit = false
+				fallthrough
+			case 1:
+				ui.doQuit(printCurrentDirPath)
+			}
+		})
+
+	if !ui.UseColors {
+		modal.SetBackgroundColor(tcell.ColorGray)
+	} else {
+		modal.SetBackgroundColor(tcell.ColorBlack)
+	}
+	modal.SetBorderColor(tcell.ColorDefault)
+
+	ui.pages.AddPage("confirm", modal, true, true)
+}
+
+// enterPreview switches from the scanning progress modal to a read-only,
+// point-in-time view of the directory tree discovered so far. The view does not
+// auto-refresh: pressing Tab again returns to the progress modal, and entering
+// the preview once more takes a fresh snapshot.
+func (ui *UI) enterPreview() {
+	analyzer, ok := ui.Analyzer.(interface{ GetCurrentDir() fs.Item })
+	if !ok {
+		return
+	}
+	root := analyzer.GetCurrentDir()
+	if root == nil {
+		return // nothing scanned yet
+	}
+
+	// compute aggregated sizes on the partial tree using a throwaway hard-link
+	// map so the running scan's accounting is left untouched
+	root.UpdateStats(make(fs.HardLinkedItems))
+
+	ui.previewing = true
+	ui.previewSavedDir = ui.currentDir
+	ui.currentDir = root
+	ui.markedRows = make(map[int]struct{})
+	ui.ignoredRows = make(map[int]struct{})
+	ui.pages.RemovePage("progress")
+	ui.showDir()
+	ui.table.Select(0, 0)
+	ui.app.SetFocus(ui.table)
+}
+
+// exitPreview leaves the mid-scan preview and restores the scanning progress modal.
+func (ui *UI) exitPreview() {
+	ui.previewing = false
+	ui.currentDir = ui.previewSavedDir
+	ui.previewSavedDir = nil
+	if ui.progressFlex != nil {
+		ui.pages.AddPage("progress", ui.progressFlex, true, true)
+	}
+	ui.app.SetFocus(ui.table)
+}
+
+// handlePreviewKeys handles input while a mid-scan preview is shown. Navigation
+// and sorting are allowed; destructive or external actions are intentionally
+// ignored because the tree is still being built.
+func (ui *UI) handlePreviewKeys(key *tcell.EventKey) *tcell.EventKey {
+	if ui.pages.HasPage("help") {
+		return key
+	}
+
+	if key.Key() == tcell.KeyTab || key.Key() == tcell.KeyEsc {
+		ui.exitPreview()
+		return nil
+	}
+	if key.Key() == tcell.KeyLeft {
+		ui.previewLeft()
+		return nil
+	}
+	if key.Key() == tcell.KeyRight {
+		ui.handleRight()
+		return nil
+	}
+
+	switch key.Rune() {
+	case '?':
+		ui.showHelp()
+		return nil
+	case 'h':
+		ui.previewLeft()
+		return nil
+	case 'l':
+		ui.handleRight()
+		return nil
+	case 's', 'C', 'n', 'M':
+		ui.handleSorting(key)
+		return nil
+	case 'a', 'B', 'c', 'm':
+		ui.handleToggles(key)
+		return nil
+	}
+
+	// up/down/pgup/pgdn and Enter are handled by the table itself
+	return key
+}
+
+// previewLeft navigates to the parent dir within the preview, or leaves the
+// preview when already at its root.
+func (ui *UI) previewLeft() {
+	if ui.currentDir == nil || ui.currentDir.GetParent() == nil {
+		ui.exitPreview()
+		return
+	}
+	ui.fileItemSelected(0, 0)
 }
 
 func (ui *UI) handleHelp(key *tcell.EventKey) *tcell.EventKey {
@@ -246,13 +432,19 @@ func (ui *UI) handleMainActions(key *tcell.EventKey) *tcell.EventKey {
 			ui.showErr("Deletion is not supported in archives", nil)
 			return nil
 		}
-		ui.handleDelete(false)
+		ui.handleDelete(ActionDelete)
 	case 'e':
 		if ui.isInArchive() {
 			ui.showErr("Deletion is not supported in archives", nil)
 			return nil
 		}
-		ui.handleDelete(true)
+		ui.handleDelete(ActionEmpty)
+	case 'D':
+		if ui.isInArchive() {
+			ui.showErr("Deletion is not supported in archives", nil)
+			return nil
+		}
+		ui.handleDelete(ActionMoveToTrash)
 	case 'v':
 		if ui.isInArchive() {
 			ui.showErr("Viewing content is not supported in archives", nil)
@@ -402,7 +594,7 @@ func (ui *UI) handleRight() {
 	}
 }
 
-func (ui *UI) handleDelete(shouldEmpty bool) {
+func (ui *UI) handleDelete(action DeleteAction) {
 	if ui.currentDir == nil {
 		return
 	}
@@ -414,9 +606,9 @@ func (ui *UI) handleDelete(shouldEmpty bool) {
 	}
 
 	if ui.askBeforeDelete {
-		ui.confirmDeletion(shouldEmpty)
+		ui.confirmDeletion(action)
 	} else {
-		ui.delete(shouldEmpty)
+		ui.delete(action)
 	}
 }
 

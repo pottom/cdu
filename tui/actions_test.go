@@ -5,9 +5,11 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/pottom/cdu/internal/common"
 	"github.com/pottom/cdu/internal/testanalyze"
 	"github.com/pottom/cdu/internal/testapp"
 	"github.com/pottom/cdu/internal/testdir"
@@ -82,8 +84,8 @@ func TestDeviceSelected(t *testing.T) {
 	assert.Equal(t, "test_dir", ui.currentDir.GetName())
 
 	assert.Equal(t, 4, ui.table.GetRowCount())
-	assert.Contains(t, ui.table.GetCell(0, 0).Text, "ccc")
-	assert.Contains(t, ui.table.GetCell(1, 0).Text, "bbb")
+	assert.Contains(t, ui.table.GetCell(0, 0).Text, "ddd")
+	assert.Contains(t, ui.table.GetCell(1, 0).Text, "ccc")
 }
 
 func TestNilDeviceSelected(t *testing.T) {
@@ -106,14 +108,71 @@ func TestAnalyzePath(t *testing.T) {
 	ui := getAnalyzedPathMockedApp(t, true, true, true)
 
 	assert.Equal(t, 4, ui.table.GetRowCount())
-	assert.Contains(t, ui.table.GetCell(0, 0).Text, "ccc")
+	assert.Contains(t, ui.table.GetCell(0, 0).Text, "ddd")
 }
 
 func TestAnalyzePathBW(t *testing.T) {
 	ui := getAnalyzedPathMockedApp(t, false, true, true)
 
 	assert.Equal(t, 4, ui.table.GetRowCount())
-	assert.Contains(t, ui.table.GetCell(0, 0).Text, "ccc")
+	assert.Contains(t, ui.table.GetCell(0, 0).Text, "ddd")
+}
+
+func TestCtrlCDuringScanShowsPartialResults(t *testing.T) {
+	simScreen := testapp.CreateSimScreen()
+	defer simScreen.Fini()
+
+	app := testapp.CreateMockedApp(false)
+	ui := CreateUI(app, simScreen, &bytes.Buffer{}, true, true, false, false)
+	analyzer := &blockingAnalyzer{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+		done:      make(common.SignalGroup),
+	}
+	ui.Analyzer = analyzer
+	ui.done = make(chan struct{})
+
+	assert.NoError(t, ui.AnalyzePath("test_dir", nil))
+
+	key := ui.keyPressed(tcell.NewEventKey(tcell.KeyCtrlC, 0, 0))
+	assert.Nil(t, key)
+	assert.True(t, ui.scanCancelled)
+	<-ui.done
+	for _, draw := range app.(*testapp.MockedApp).GetUpdateDraws() {
+		draw()
+	}
+
+	assert.False(t, ui.scanCancelled)
+	assert.False(t, ui.pages.HasPage("progress"))
+	assert.Equal(t, "test_dir", ui.currentDir.GetName())
+	assert.Equal(t, 4, ui.table.GetRowCount())
+}
+
+type blockingAnalyzer struct {
+	testanalyze.MockedAnalyzer
+	started   chan struct{}
+	cancelled chan struct{}
+	done      common.SignalGroup
+	once      sync.Once
+}
+
+func (a *blockingAnalyzer) AnalyzeDir(
+	path string, ignore common.ShouldDirBeIgnored, fileTypeFilter common.ShouldFileBeIgnored,
+) fs.Item {
+	close(a.started)
+	<-a.cancelled
+	defer a.done.Broadcast()
+	return a.MockedAnalyzer.AnalyzeDir(path, ignore, fileTypeFilter)
+}
+
+func (a *blockingAnalyzer) Cancel() {
+	a.once.Do(func() {
+		close(a.cancelled)
+	})
+}
+
+func (a *blockingAnalyzer) GetDone() common.SignalGroup {
+	return a.done
 }
 
 func TestAnalyzePathWithParentDir(t *testing.T) {
@@ -146,7 +205,7 @@ func TestAnalyzePathWithParentDir(t *testing.T) {
 
 	assert.Equal(t, 5, ui.table.GetRowCount())
 	assert.Contains(t, ui.table.GetCell(0, 0).Text, "/..")
-	assert.Contains(t, ui.table.GetCell(1, 0).Text, "ccc")
+	assert.Contains(t, ui.table.GetCell(1, 0).Text, "ddd")
 }
 
 func TestReadAnalysis(t *testing.T) {
@@ -253,7 +312,7 @@ func TestViewContentsOfNotExistingFile(t *testing.T) {
 	ui.table.Select(3, 0)
 
 	selectedFile := ui.table.GetCell(3, 0).GetReference().(fs.Item)
-	assert.Equal(t, "ddd", selectedFile.GetName())
+	assert.Equal(t, "aaa", selectedFile.GetName())
 
 	res := ui.showFile()
 	assert.Nil(t, res)

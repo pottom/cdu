@@ -41,15 +41,23 @@ type Item interface {
 	GetParent() Item
 	SetParent(Item)
 	GetMultiLinkedInode() uint64
-	EncodeJSON(writer io.Writer, topLevel bool) error
-	GetItemStats(linkedItems HardLinkedItems) (itemCount int64, size, usage int64)
+	EncodeJSON(writer io.Writer, topLevel bool, attributes JSONAttributes) error
+	GetItemStats(linkedItems HardLinkedItems, filteringFiles bool) (itemCount int64, size, usage int64)
 	UpdateStats(linkedItems HardLinkedItems)
+	UpdateStatsWithFileFiltering(linkedItems HardLinkedItems)
 	AddFile(Item)
 	GetFiles(SortBy, SortOrder) iter.Seq[Item]
 	GetFilesLocked(SortBy, SortOrder) iter.Seq[Item]
 	RemoveFile(Item)
 	RemoveFileByName(name string)
 	RLock() func()
+}
+
+// SymlinkItem is an optional interface implemented by items that carry a
+// symlink target. Consumers type-assert an Item to it to display the target
+// (e.g. "name -> target"); items that are not symlinks return an empty string.
+type SymlinkItem interface {
+	GetSymlinkTarget() string
 }
 
 // Files - slice of pointers to File

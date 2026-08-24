@@ -60,6 +60,7 @@ Flags:
       --min-age string                Include files with mtime at least DURATION old (e.g., 30d, 1w)
       --mouse                         Use mouse
   -c, --no-color                      Do not use colorized output
+      --no-confirm-quit               Do not ask for confirmation before quitting after a long scan
   -x, --no-cross                      Do not cross filesystem boundaries
       --no-delete                     Do not allow deletions
   -H, --no-hidden                     Ignore hidden directories (beginning with dot)
@@ -69,6 +70,7 @@ Flags:
   -u, --no-unicode                    Do not use Unicode symbols (for size bar)
       --no-view-file                  Do not allow viewing file contents
   -n, --non-interactive               Do not run in interactive mode
+      --output-attrs string           Export only selected JSON attributes (name,asize,dsize,items,mtime,notreg)
   -o, --output-file string            Export all info into file as JSON
   -r, --read-from-storage             Use existing database instead of re-scanning
       --reverse-sort                  Reverse sorting order (smallest to largest) in non-interactive mode
@@ -80,6 +82,7 @@ Flags:
   -C, --show-item-count               Show number of items in directory
   -M, --show-mtime                    Show latest mtime of items in directory
   -B, --show-relative-size            Show relative size
+      --show-symlink-target           Show symlink target (name -> target) in the file list
       --si                            Show sizes with decimal SI prefixes (kB, MB, GB) instead of binary prefixes (KiB, MiB, GiB)
       --since string                  Include files with mtime >= WHEN. WHEN accepts RFC3339 timestamp (e.g., 2025-08-11T01:00:00-07:00) or date only YYYY-MM-DD (calendar-day compare; includes the whole day)
   -s, --summarize                     Show only a total in non-interactive mode
@@ -87,6 +90,9 @@ Flags:
   -T, --type strings                  File types to include (e.g., --type yaml,json)
       --until string                  Include files with mtime <= WHEN. WHEN accepts RFC3339 timestamp or date only YYYY-MM-DD
   -v, --version                       Print version
+      --web                           Run the web UI (serves a browser interface instead of the terminal UI)
+      --web-listen string             Address for the web UI to listen on (default: localhost with a random free port)
+      --web-open                      Open the web UI in the default browser on start (default true)
       --write-config                  Write current configuration to file (default is $HOME/.gdu.yaml)
 
 Basic list of actions in interactive mode (show help modal for more):
@@ -131,6 +137,10 @@ Basic list of actions in interactive mode (show help modal for more):
     gdu --db=tmp.db /                     # use persistent SQLite storage for saving analysis data
     gdu -r /                              # read saved analysis data from persistent key-value storage
 
+    gdu --web /                           # analyze and browse the results in a web browser
+    gdu --web --web-listen localhost:8080 /   # serve the web UI on a fixed address
+    gdu --web --web-open=false /          # print the URL but do not open a browser
+
 ## Modes
 
 Gdu has three modes: interactive (default), non-interactive and export.
@@ -141,9 +151,38 @@ In non-interactive mode (and without `--top` and `--depth` flags), gdu uses a me
 This means memory usage stays constant regardless of how large the scanned directory tree is.
 When `--top` or `--depth` flags are used, the full directory tree is built in memory as in interactive mode.
 
-Export mode (flag `-o`) outputs all usage data as JSON, which can be later opened using the `-f` flag.
+Export mode (flag `-o`) outputs all usage data as JSON, which can be later opened using the `-f` flag. In interactive mode, press `Ctrl+C` during a scan to stop scheduling new work and keep the results found so far.
+
+By default the export includes every attribute, and directories always carry their `asize`, `dsize`, and `items` summary stats so they can be preserved on import. Use `--output-attrs=asize,dsize` to emit only selected optional attributes; `name` is always included. Available attributes are `asize`, `dsize`, `items`, `mtime`, and `notreg`.
+
+Gdu honors `BLOCK_SIZE` and `BLOCKSIZE` in terminal output. `BLOCK_SIZE` takes precedence; both accept GNU coreutils block-size values such as `1K`, `kB`, `human-readable`, and `si`. Explicit size-format flags override these environment variables. Exported JSON always retains raw byte values.
 
 Hard links are counted only once.
+
+## Web UI
+
+Gdu can serve a browser-based interface instead of the terminal UI. Run:
+
+```
+gdu --web /some/dir
+```
+
+Gdu scans the directory, prints the URL, and (by default) opens it in your
+default browser. The interface shows an animated donut chart of the current
+directory's contents alongside a sortable table with size bars, breadcrumb
+navigation, and a disk-usage/apparent-size toggle. Scan progress is streamed
+live while the analysis runs.
+
+By default the server binds to `localhost` on a random free port. Use
+`--web-listen` (or the `web.listen` config option) to pin a fixed address.
+
+The compiled web assets are embedded in the binary, so no extra files or network
+access are required.
+
+**Security:** the web UI is read-only and has no authentication. It exposes file
+names and sizes over HTTP, so keep it bound to `localhost` (the default). Binding
+to a non-loopback address makes those details reachable by other hosts on the
+network and prints a warning.
 
 ## File flags
 
@@ -154,7 +193,7 @@ flag with following meaning:
 
 * `.` An error occurred while reading a subdirectory, size may be not correct.
 
-* `@` File is symlink or socket.
+* `@` File is symlink or socket. Symlinks can be shown as `name -> target` (the link target is displayed next to the name, like `ls -l`).
 
 * `H` Same file was already counted (hard link).
 
@@ -190,6 +229,15 @@ sorting:
 echo "change-cwd: true" >> ~/.gdu.yaml
 ```
 
+* To configure the web UI (bind address and browser behavior):
+
+```
+web:
+    listen: "localhost:8080"  # empty (default) = localhost + random free port
+    open-browser: true        # open the default browser on start
+    browser: ""               # override launcher command; empty = OS default
+```
+
 * To save the current configuration
 
 ```
@@ -208,6 +256,9 @@ style:
     selected-row:
         text-color: black
         background-color: "#ff0000"
+    marked:
+        text-color: white
+        background-color: "#6600cc"
 ```
 
 ## Deletion in background and in parallel (experimental)

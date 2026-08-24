@@ -12,11 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Install Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: 1.26.x
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Run linters
       uses: golangci/golangci-lint-action@v9
       with:
@@ -34,11 +34,11 @@ jobs:
     steps:
     - name: Install Go
       if: success()
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: ${{ matrix.go-version }}
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Run tests
       run: go test -v -covermode=count ./...
 
@@ -47,16 +47,16 @@ jobs:
     steps:
     - name: Install Go
       if: success()
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: 1.26.x
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Calc coverage
       run: |
         go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
     - name: Upload coverage report
-      uses: codecov/codecov-action@v6
+      uses: codecov/codecov-action@v7
       with:
         files: ./coverage.out
         fail_ci_if_error: true
