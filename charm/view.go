@@ -668,6 +668,23 @@ func fraction(size, total int64) float64 {
 	return float64(size) / float64(total)
 }
 
+// symlinkSuffix returns " -> target" for a symlink row when --show-symlink-target
+// is on, or "" for anything else. It is joined to the plain name, so it rides the
+// same width math as the rest of the row.
+func (m *model) symlinkSuffix(item fs.Item) string {
+	if !m.ui.showSymlinkTarget {
+		return ""
+	}
+	si, ok := item.(fs.SymlinkItem)
+	if !ok {
+		return ""
+	}
+	if target := si.GetSymlinkTarget(); target != "" {
+		return " -> " + target
+	}
+	return ""
+}
+
 // viewRow builds the row as plain text at an exact width first, and only then
 // applies styles. Never truncate or measure an already-styled string: escape
 // sequences are invisible on screen but very much visible to a rune counter, and
@@ -708,6 +725,11 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	if item.IsDir() {
 		name += "/"
 	}
+	// A symlink reads as "name -> target" when --show-symlink-target is on. The
+	// suffix joins the plain name before the width math and the single
+	// Truncate/FillRight below, so an over-long target is clipped with the row
+	// rather than spilling past it — the same rule that keeps every other row exact.
+	name += m.symlinkSuffix(item)
 	// Flags carry meaning that must survive mono, NO_COLOR and colourblindness,
 	// so they are a glyph, not a colour.
 	switch item.GetFlag() {
