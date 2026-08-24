@@ -64,8 +64,8 @@ type UI struct {
 	// Optional columns, off by default and toggled with c and m.
 	showItemCount bool
 	showMtime     bool
-	// showSymlinkTarget mirrors gdu's --show-symlink-target. Stored to satisfy the
-	// app.UI interface; the Charm interface does not render it yet.
+	// showSymlinkTarget mirrors gdu's --show-symlink-target: symlink rows render as
+	// "name -> target" (see viewRow).
 	showSymlinkTarget bool
 
 	// infoOpen is whether the `i` item-info pane is showing. On by default, toggled
@@ -282,10 +282,8 @@ func (ui *UI) SetFoldersFirst() {
 	ui.foldersFirst = true
 }
 
-// SetShowSymlinkTarget records the --show-symlink-target flag. It satisfies the
-// app.UI interface, which gdu grew for its classic and stdout interfaces; the
-// Charm interface does not yet render "name -> target", so the value is stored
-// but not consulted. Rendering it is a follow-up, not part of the engine sync.
+// SetShowSymlinkTarget turns on "name -> target" for symlink rows, mirroring
+// gdu's --show-symlink-target. viewRow consults ui.showSymlinkTarget.
 func (ui *UI) SetShowSymlinkTarget(value bool) {
 	ui.showSymlinkTarget = value
 }

@@ -540,6 +540,9 @@ func (a *App) getCharmOptions() []charm.Option {
 	if a.Flags.FoldersFirst {
 		opts = append(opts, func(ui *charm.UI) { ui.SetFoldersFirst() })
 	}
+	if a.Flags.ShowSymlinkTarget {
+		opts = append(opts, func(ui *charm.UI) { ui.SetShowSymlinkTarget(true) })
+	}
 	// Unconditional, unlike the toggles above: the pane is on by default, so the flag
 	// (default true) has to be able to turn it off, not only on.
 	opts = append(opts, charm.WithInfoPane(a.Flags.Info))
