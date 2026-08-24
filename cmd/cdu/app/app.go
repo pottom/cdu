@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -27,6 +28,7 @@ import (
 	"github.com/pottom/cdu/report"
 	"github.com/pottom/cdu/stdout"
 	"github.com/pottom/cdu/tui"
+	"github.com/pottom/cdu/webui"
 )
 
 // UI is common interface for both terminal UI and text output
@@ -47,68 +49,74 @@ type UI interface {
 	SetTimeFilter(timeFilter common.TimeFilter)
 	SetArchiveBrowsing(value bool)
 	SetCollapsePath(value bool)
+	SetShowSymlinkTarget(value bool)
 	StartUILoop() error
 }
 
 // Flags define flags accepted by Run
 type Flags struct {
-	Style              Style    `yaml:"style"`
-	Sorting            Sorting  `yaml:"sorting"`
-	CfgFile            string   `yaml:"-"`
-	LogFile            string   `yaml:"log-file"`
-	InputFile          string   `yaml:"input-file"`
-	OutputFile         string   `yaml:"output-file"`
-	IgnoreFromFile     string   `yaml:"ignore-from-file"`
-	IgnoreDirs         []string `yaml:"ignore-dirs"`
-	IgnoreDirPatterns  []string `yaml:"ignore-dir-patterns"`
-	TypeFilter         []string `yaml:"type"`
-	ExcludeTypeFilter  []string `yaml:"exclude-type"`
-	MaxCores           int      `yaml:"max-cores"`
-	Top                int      `yaml:"top"`
-	Depth              int      `yaml:"depth"`
-	SequentialScanning bool     `yaml:"sequential-scanning"`
-	ShowDisks          bool     `yaml:"-"`
-	ShowApparentSize   bool     `yaml:"show-apparent-size"`
-	ShowRelativeSize   bool     `yaml:"show-relative-size"`
-	ShowAnnexedSize    bool     `yaml:"show-annexed-size"`
-	ShowVersion        bool     `yaml:"-"`
-	ShowItemCount      bool     `yaml:"show-item-count"`
-	ShowMTime          bool     `yaml:"show-mtime"`
-	FoldersFirst       bool     `yaml:"folders-first"`
-	Info               bool     `yaml:"info"`
-	NoColor            bool     `yaml:"no-color"`
-	Mouse              bool     `yaml:"mouse"`
-	Icons              bool     `yaml:"icons"`
-	NonInteractive     bool     `yaml:"non-interactive"`
-	Interactive        bool     `yaml:"interactive"`
-	NoProgress         bool     `yaml:"no-progress"`
-	NoUnicode          bool     `yaml:"no-unicode"`
-	NoCross            bool     `yaml:"no-cross"`
-	NoHidden           bool     `yaml:"no-hidden"`
-	NoDelete           bool     `yaml:"no-delete"`
-	NoViewFile         bool     `yaml:"no-view-file"`
-	NoSpawnShell       bool     `yaml:"no-spawn-shell"`
-	FollowSymlinks     bool     `yaml:"follow-symlinks"`
-	Profiling          bool     `yaml:"profiling"`
-	ReadFromStorage    bool     `yaml:"read-from-storage"`
-	DbPath             string   `yaml:"db"`
-	Summarize          bool     `yaml:"summarize"`
-	UseSIPrefix        bool     `yaml:"use-si-prefix"`
-	NoPrefix           bool     `yaml:"no-prefix"`
-	ShowInKiB          bool     `yaml:"show-in-kib"`
-	WriteConfig        bool     `yaml:"-"`
-	ReverseSort        bool     `yaml:"reverse-sort"`
-	ChangeCwd          bool     `yaml:"change-cwd"`
-	DeleteInBackground bool     `yaml:"delete-in-background"`
-	DeleteInParallel   bool     `yaml:"delete-in-parallel"`
-	Since              string   `yaml:"since"`
-	Until              string   `yaml:"until"`
-	MaxAge             string   `yaml:"max-age"`
-	MinAge             string   `yaml:"min-age"`
-	ArchiveBrowsing    bool     `yaml:"archive-browsing"`
-	CollapsePath       bool     `yaml:"collapse-path"`
-	BrowseParentDirs   bool     `yaml:"browse-parent-dirs"`
-	Classic            bool     `yaml:"classic"`
+	Style              Style     `yaml:"style"`
+	Sorting            Sorting   `yaml:"sorting"`
+	CfgFile            string    `yaml:"-"`
+	LogFile            string    `yaml:"log-file"`
+	InputFile          string    `yaml:"input-file"`
+	OutputFile         string    `yaml:"output-file"`
+	OutputAttrs        string    `yaml:"output-attrs"`
+	IgnoreFromFile     string    `yaml:"ignore-from-file"`
+	IgnoreDirs         []string  `yaml:"ignore-dirs"`
+	IgnoreDirPatterns  []string  `yaml:"ignore-dir-patterns"`
+	TypeFilter         []string  `yaml:"type"`
+	ExcludeTypeFilter  []string  `yaml:"exclude-type"`
+	MaxCores           int       `yaml:"max-cores"`
+	Top                int       `yaml:"top"`
+	Depth              int       `yaml:"depth"`
+	SequentialScanning bool      `yaml:"sequential-scanning"`
+	ShowDisks          bool      `yaml:"-"`
+	ShowApparentSize   bool      `yaml:"show-apparent-size"`
+	ShowRelativeSize   bool      `yaml:"show-relative-size"`
+	ShowAnnexedSize    bool      `yaml:"show-annexed-size"`
+	ShowVersion        bool      `yaml:"-"`
+	ShowItemCount      bool      `yaml:"show-item-count"`
+	ShowMTime          bool      `yaml:"show-mtime"`
+	FoldersFirst       bool      `yaml:"folders-first"`
+	Info               bool      `yaml:"info"`
+	NoColor            bool      `yaml:"no-color"`
+	Mouse              bool      `yaml:"mouse"`
+	Icons              bool      `yaml:"icons"`
+	NonInteractive     bool      `yaml:"non-interactive"`
+	Interactive        bool      `yaml:"interactive"`
+	NoProgress         bool      `yaml:"no-progress"`
+	NoUnicode          bool      `yaml:"no-unicode"`
+	NoCross            bool      `yaml:"no-cross"`
+	NoHidden           bool      `yaml:"no-hidden"`
+	NoDelete           bool      `yaml:"no-delete"`
+	NoViewFile         bool      `yaml:"no-view-file"`
+	NoSpawnShell       bool      `yaml:"no-spawn-shell"`
+	NoConfirmQuit      bool      `yaml:"no-confirm-quit"`
+	FollowSymlinks     bool      `yaml:"follow-symlinks"`
+	Profiling          bool      `yaml:"profiling"`
+	ReadFromStorage    bool      `yaml:"read-from-storage"`
+	DbPath             string    `yaml:"db"`
+	Summarize          bool      `yaml:"summarize"`
+	UseSIPrefix        bool      `yaml:"use-si-prefix"`
+	NoPrefix           bool      `yaml:"no-prefix"`
+	ShowInKiB          bool      `yaml:"show-in-kib"`
+	WriteConfig        bool      `yaml:"-"`
+	ReverseSort        bool      `yaml:"reverse-sort"`
+	ChangeCwd          bool      `yaml:"change-cwd"`
+	DeleteInBackground bool      `yaml:"delete-in-background"`
+	DeleteInParallel   bool      `yaml:"delete-in-parallel"`
+	Since              string    `yaml:"since"`
+	Until              string    `yaml:"until"`
+	MaxAge             string    `yaml:"max-age"`
+	MinAge             string    `yaml:"min-age"`
+	ArchiveBrowsing    bool      `yaml:"archive-browsing"`
+	CollapsePath       bool      `yaml:"collapse-path"`
+	ShowSymlinkTarget  bool      `yaml:"show-symlink-target"`
+	BrowseParentDirs   bool      `yaml:"browse-parent-dirs"`
+	Web                bool      `yaml:"-"`
+	WebConfig          WebConfig `yaml:"web"`
+	Classic            bool      `yaml:"classic"`
 
 	// Theme colours the Charm interface. The classic interface keeps its own
 	// `style` block above and ignores this one.
@@ -124,6 +132,13 @@ type Flags struct {
 	// ThemeProblems are theme files in the user's theme directory that could not
 	// be read. They are warnings, not errors: cdu opens regardless, without them.
 	ThemeProblems []string `yaml:"-"`
+}
+
+// WebConfig defines the web UI options that can be set from the config file.
+type WebConfig struct {
+	Listen      string `yaml:"listen"`
+	OpenBrowser bool   `yaml:"open-browser"`
+	Browser     string `yaml:"browser"`
 }
 
 // ShouldRunInNonInteractiveMode checks if the application should run in non-interactive mode
@@ -155,10 +170,13 @@ func (f *Flags) ShouldRunInNonInteractiveMode(istty bool) bool {
 type Style struct {
 	Footer        FooterColorStyle    `yaml:"footer"`
 	SelectedRow   ColorStyle          `yaml:"selected-row"`
+	Marked        ColorStyle          `yaml:"marked"`
 	ResultRow     ResultRowColorStyle `yaml:"result-row"`
 	Header        HeaderColorStyle    `yaml:"header"`
 	ProgressModal ProgressModalOpts   `yaml:"progress-modal"`
 	UseOldSizeBar bool                `yaml:"use-old-size-bar"`
+	// ShowBarPercentage shows the numeric usage percentage next to the size bar.
+	ShowBarPercentage bool `yaml:"show-bar-percentage"`
 }
 
 // ProgressModalOpts defines options for progress modal
@@ -241,13 +259,21 @@ func (a *App) Run() error {
 		return fmt.Errorf("--interactive and --non-interactive cannot be used at once")
 	}
 
+	outputAttributes, err := parseJSONAttributes(a.Flags.OutputAttrs)
+	if err != nil {
+		return err
+	}
+	if a.Flags.OutputAttrs != "" && a.Flags.OutputFile == "" {
+		return errors.New("--output-attrs requires --output-file")
+	}
+
 	path := a.getPath()
-	path, err := filepath.Abs(path)
+	path, err = filepath.Abs(path)
 	if err != nil {
 		return err
 	}
 
-	ui, err = a.createUI()
+	ui, err = a.createUI(outputAttributes)
 	if err != nil {
 		return err
 	}
@@ -380,11 +406,22 @@ func (a *App) setTimeFilters(ui UI) error {
 	return nil
 }
 
-func (a *App) createUI() (UI, error) {
+func (a *App) createUI(outputAttributes gfs.JSONAttributes) (UI, error) {
 	var ui UI
 	var err error
 
 	switch {
+	case a.Flags.Web:
+		ui = webui.CreateUI(
+			a.Writer,
+			a.Flags.WebConfig.Listen,
+			a.Flags.WebConfig.OpenBrowser,
+			a.Flags.WebConfig.Browser,
+			!a.Flags.NoColor,
+			a.Flags.ShowApparentSize,
+			a.Flags.ShowRelativeSize,
+			a.Flags.UseSIPrefix,
+		)
 	case a.Flags.OutputFile != "":
 		var output io.Writer
 		if a.Flags.OutputFile == "-" {
@@ -401,6 +438,10 @@ func (a *App) createUI() (UI, error) {
 			!a.Flags.NoColor && a.Istty,
 			!a.Flags.NoProgress && a.Istty,
 			a.Flags.UseSIPrefix,
+			a.Flags.Top,
+			a.Flags.Depth,
+			a.Flags.Summarize,
+			outputAttributes,
 		)
 	case a.Flags.ShouldRunInNonInteractiveMode(a.Istty):
 		fixedUnit := ""
@@ -426,6 +467,9 @@ func (a *App) createUI() (UI, error) {
 		}
 		if a.Flags.ShowItemCount {
 			stdoutUI.SetShowItemCount()
+		}
+		if a.Flags.ShowSymlinkTarget {
+			stdoutUI.SetShowSymlinkTarget(true)
 		}
 		ui = stdoutUI
 	case !a.Flags.Classic:
@@ -507,6 +551,7 @@ func (a *App) getCharmOptions() []charm.Option {
 	return opts
 }
 
+// nolint:gocyclo,funlen // This function is a suite of if statements
 func (a *App) getOptions() []tui.Option {
 	var opts []tui.Option
 
@@ -518,6 +563,16 @@ func (a *App) getOptions() []tui.Option {
 	if a.Flags.Style.SelectedRow.BackgroundColor != "" {
 		opts = append(opts, func(ui *tui.UI) {
 			ui.SetSelectedBackgroundColor(tcell.GetColor(a.Flags.Style.SelectedRow.BackgroundColor))
+		})
+	}
+	if a.Flags.Style.Marked.TextColor != "" {
+		opts = append(opts, func(ui *tui.UI) {
+			ui.SetMarkedTextColor(tcell.GetColor(a.Flags.Style.Marked.TextColor))
+		})
+	}
+	if a.Flags.Style.Marked.BackgroundColor != "" {
+		opts = append(opts, func(ui *tui.UI) {
+			ui.SetMarkedBackgroundColor(tcell.GetColor(a.Flags.Style.Marked.BackgroundColor))
 		})
 	}
 	if a.Flags.Style.Footer.TextColor != "" {
@@ -570,6 +625,11 @@ func (a *App) getOptions() []tui.Option {
 			ui.UseOldSizeBar()
 		})
 	}
+	if a.Flags.Style.ShowBarPercentage {
+		opts = append(opts, func(ui *tui.UI) {
+			ui.SetShowBarPercentage()
+		})
+	}
 	if a.Flags.Sorting.Order != "" || a.Flags.Sorting.By != "" {
 		opts = append(opts, func(ui *tui.UI) {
 			ui.SetDefaultSorting(a.Flags.Sorting.By, a.Flags.Sorting.Order)
@@ -590,6 +650,11 @@ func (a *App) getOptions() []tui.Option {
 			ui.SetShowMTime()
 		})
 	}
+	if a.Flags.ShowSymlinkTarget {
+		opts = append(opts, func(ui *tui.UI) {
+			ui.SetShowSymlinkTarget(true)
+		})
+	}
 	if a.Flags.NoDelete {
 		opts = append(opts, func(ui *tui.UI) {
 			ui.SetNoDelete()
@@ -603,6 +668,11 @@ func (a *App) getOptions() []tui.Option {
 	if a.Flags.NoSpawnShell {
 		opts = append(opts, func(ui *tui.UI) {
 			ui.SetNoSpawnShell()
+		})
+	}
+	if a.Flags.NoConfirmQuit {
+		opts = append(opts, func(ui *tui.UI) {
+			ui.SetConfirmQuit(false)
 		})
 	}
 	if a.Flags.DeleteInBackground {
@@ -672,6 +742,13 @@ func (a *App) runAction(ui UI, path string) error {
 			return fmt.Errorf("reading analysis: %w", err)
 		}
 	default:
+		// Do not materialize dataless files on macOS. Without this, scanning
+		// an iCloud Drive / Google Drive / OneDrive tree is orders of
+		// magnitude slower. This is a no-op on other platforms.
+		if err := gfs.PreventDatalessMaterialization(); err != nil {
+			log.Printf("Could not prevent dataless materialization: %s", err)
+		}
+
 		if build.RootPathPrefix != "" {
 			path = build.RootPathPrefix + path
 		}

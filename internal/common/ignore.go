@@ -32,7 +32,7 @@ func CreateIgnorePattern(paths []string) (compiled *regexp.Regexp, err error) {
 		paths[i] = "(" + path + ")"
 	}
 
-	ignore := `^` + strings.Join(paths, "|") + `$`
+	ignore := `^(?:` + strings.Join(paths, "|") + `)$`
 	return regexp.Compile(ignore)
 }
 
@@ -232,4 +232,9 @@ func (ui *UI) CreateFileTypeFilter() ShouldFileBeIgnored {
 
 	// No type filtering - return nil to indicate no filtering is needed
 	return nil
+}
+
+// IsFilteringFiles returns true if we have any file type filters set
+func (ui *UI) IsFilteringFiles() bool {
+	return len(ui.IgnoreTypes) > 0 || len(ui.IncludeTypes) > 0 || ui.FilteringFiles
 }

@@ -64,6 +64,9 @@ type UI struct {
 	// Optional columns, off by default and toggled with c and m.
 	showItemCount bool
 	showMtime     bool
+	// showSymlinkTarget mirrors gdu's --show-symlink-target. Stored to satisfy the
+	// app.UI interface; the Charm interface does not render it yet.
+	showSymlinkTarget bool
 
 	// infoOpen is whether the `i` item-info pane is showing. On by default, toggled
 	// with i, and persisted like the columns (t then s) — the live state, which the
@@ -277,6 +280,14 @@ func (ui *UI) SetShowMTime() {
 // SetFoldersFirst starts with directories floated to the top of each listing.
 func (ui *UI) SetFoldersFirst() {
 	ui.foldersFirst = true
+}
+
+// SetShowSymlinkTarget records the --show-symlink-target flag. It satisfies the
+// app.UI interface, which gdu grew for its classic and stdout interfaces; the
+// Charm interface does not yet render "name -> target", so the value is stored
+// but not consulted. Rendering it is a follow-up, not part of the engine sync.
+func (ui *UI) SetShowSymlinkTarget(value bool) {
+	ui.showSymlinkTarget = value
 }
 
 // rootPath is the absolute path the scan is rooted at, which is what the disk

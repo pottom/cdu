@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"runtime"
 	"strings"
 
@@ -145,6 +144,8 @@ func init() {
 		"Read config from file (default is $XDG_CONFIG_HOME/cdu/cdu.yaml, else ~/.config/cdu/cdu.yaml; falls back to a gdu config if there is one)")
 	flags.StringVarP(&af.LogFile, "log-file", "l", "/dev/null", "Path to a logfile")
 	flags.StringVarP(&af.OutputFile, "output-file", "o", "", "Export all info into file as JSON")
+	flags.StringVar(&af.OutputAttrs, "output-attrs", "",
+		"Export only selected JSON attributes (name,asize,dsize,items,mtime,notreg)")
 	flags.StringVarP(&af.InputFile, "input-file", "f", "", "Import analysis from JSON file")
 	flags.IntVarP(&af.MaxCores, "max-cores", "m", runtime.NumCPU(), fmt.Sprintf("Set max cores that cdu will use. %d cores available", runtime.NumCPU()))
 	flags.BoolVar(&af.SequentialScanning, "sequential", false, "Use sequential scanning (intended for rotating HDDs)")
@@ -181,6 +182,8 @@ func init() {
 	flags.BoolVarP(&af.NoColor, "no-color", "c", false, "Do not use colorized output")
 	flags.BoolVarP(&af.ShowItemCount, "show-item-count", "C", false, "Show number of items in directory")
 	flags.BoolVarP(&af.ShowMTime, "show-mtime", "M", false, "Show latest mtime of items in directory")
+	flags.BoolVar(&af.ShowSymlinkTarget, "show-symlink-target", false,
+		"Show symlink target (name -> target) in the file list")
 	flags.BoolVar(&af.Info, "info", true, "Show the item-info pane at the foot of the list (toggle with i)")
 	// Persistent, not local: `cdu themes --theme ember` has to reach the listing
 	// so it can mark which theme is in use, and a subcommand does not inherit
@@ -207,6 +210,14 @@ func init() {
 	flags.BoolVar(&af.NoDelete, "no-delete", false, "Do not allow deletions")
 	flags.BoolVar(&af.NoViewFile, "no-view-file", false, "Do not allow viewing file contents")
 	flags.BoolVar(&af.NoSpawnShell, "no-spawn-shell", false, "Do not allow spawning shell")
+	flags.BoolVar(&af.NoConfirmQuit, "no-confirm-quit", false,
+		"Do not ask for confirmation before quitting after a long scan")
+	flags.BoolVar(&af.Web, "web", false,
+		"Run the web UI (serves a browser interface instead of the terminal UI)")
+	flags.StringVar(&af.WebConfig.Listen, "web-listen", "",
+		"Address for the web UI to listen on (default: localhost with a random free port)")
+	flags.BoolVar(&af.WebConfig.OpenBrowser, "web-open", true,
+		"Open the web UI in the default browser on start")
 	flags.BoolVar(&af.WriteConfig, "write-config", false,
 		"Write current configuration to ~/.config/cdu/cdu.yaml (or --config-file). This is also how you take over a gdu config")
 	flags.StringVar(
@@ -280,13 +291,15 @@ func setDefaults() {
 }
 
 func setConfigFilePath() {
-	command := strings.Join(os.Args, " ")
-	if strings.Contains(command, "--config-file") {
-		re := regexp.MustCompile("--config-file[= ]([^ ]+)")
-		parts := re.FindStringSubmatch(command)
-
-		if len(parts) > 1 {
-			af.CfgFile = parts[1]
+	// Read the arguments one by one instead of joining them, so that paths
+	// containing spaces are not truncated.
+	for i, arg := range os.Args {
+		if value, found := strings.CutPrefix(arg, "--config-file="); found {
+			af.CfgFile = value
+			return
+		}
+		if arg == "--config-file" && i+1 < len(os.Args) {
+			af.CfgFile = os.Args[i+1]
 			return
 		}
 	}
@@ -381,7 +394,7 @@ func runE(command *cobra.Command, args []string) error {
 	// Only the classic interface gets a tcell screen. The Charm interface runs its
 	// own Bubble Tea loop, and a second reader attached to the same terminal would
 	// race it for input — each of them swallowing every other keystroke.
-	if !af.ShouldRunInNonInteractiveMode(istty) && af.Classic {
+	if !af.ShouldRunInNonInteractiveMode(istty) && af.Classic && !af.Web {
 		screen, err = tcell.NewScreen()
 		if err != nil {
 			return fmt.Errorf("error creating screen: %w", err)

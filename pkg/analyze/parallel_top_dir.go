@@ -67,10 +67,13 @@ func (a *TopDirAnalyzer) AnalyzeDir(
 	var topDirs []*TopDir
 
 	for _, f := range files {
+		if a.IsCancelled() {
+			break
+		}
 		name := f.Name()
-		entryPath := path + pathSep + name
+		entryPath := filepath.Join(path, name)
 		if f.IsDir() {
-			if a.ignoreDir(name, entryPath) {
+			if a.shouldSkipDir(name, entryPath) {
 				continue
 			}
 			topDir := &TopDir{
@@ -114,9 +117,10 @@ func (a *TopDirAnalyzer) AnalyzeDir(
 			}
 
 			file := SimpleFile{
-				Name: name,
-				Flag: getFlag(info),
-				Size: info.Size(),
+				Name:    name,
+				Flag:    getFlag(info),
+				Size:    info.Size(),
+				Symlink: readSymlinkTarget(f.Type(), entryPath),
 			}
 
 			usage, mli := getPlatformSpecificUsageAndMli(info)
@@ -159,8 +163,8 @@ func (a *TopDirAnalyzer) AnalyzeDir(
 func (a *TopDirAnalyzer) processSubDir(path string, topDir *TopDir) {
 	var (
 		err        error
-		totalSize  int64 = 4096
-		totalUsage int64 = 4096
+		totalSize  int64
+		totalUsage int64
 		totalCount int64
 		info       os.FileInfo
 	)
@@ -172,12 +176,17 @@ func (a *TopDirAnalyzer) processSubDir(path string, topDir *TopDir) {
 	}
 
 	for _, f := range files {
+		if a.IsCancelled() {
+			break
+		}
 		name := f.Name()
 		entryPath := path + pathSep + name
 		if f.IsDir() {
-			if a.ignoreDir(name, entryPath) {
+			if a.shouldSkipDir(name, entryPath) {
 				continue
 			}
+
+			totalCount++
 
 			select {
 			case concurrencyLimit <- struct{}{}:
@@ -196,8 +205,6 @@ func (a *TopDirAnalyzer) processSubDir(path string, topDir *TopDir) {
 				continue // Skip this file
 			}
 
-			totalCount++
-
 			info, err = f.Info()
 			if err != nil {
 				log.Print(err.Error())
@@ -209,6 +216,8 @@ func (a *TopDirAnalyzer) processSubDir(path string, topDir *TopDir) {
 			if !a.matchesTimeFilterFn(info.ModTime()) {
 				continue // Skip this file
 			}
+
+			totalCount++
 
 			if a.followSymlinks && info.Mode()&os.ModeSymlink != 0 {
 				infoF, err := followSymlink(entryPath, a.gitAnnexedSize)
@@ -235,8 +244,13 @@ func (a *TopDirAnalyzer) processSubDir(path string, topDir *TopDir) {
 		}
 	}
 
+	if len(files) == 0 {
+		totalSize = EmptyDirSize
+		totalUsage = 0
+	}
+
 	a.progressItemCount.Add(totalCount)
 	a.progressTotalUsage.Add(totalUsage)
 
-	topDir.AddUsage(totalSize, totalUsage, totalCount+1)
+	topDir.AddUsage(totalSize, totalUsage, totalCount)
 }

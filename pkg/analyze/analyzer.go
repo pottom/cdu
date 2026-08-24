@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/pottom/cdu/internal/common"
+	"github.com/pottom/cdu/pkg/fs"
 )
 
 // BaseAnalyzer provides common logic for all analyzers
@@ -14,7 +15,9 @@ type BaseAnalyzer struct {
 	progressItemCount       atomic.Int64
 	progressTotalUsage      atomic.Int64
 	progressCurrentItemName atomic.Value
+	currentDir              atomic.Value
 	doneChan                common.SignalGroup
+	cancelled               atomic.Bool
 	wait                    *WaitGroup
 	ignoreDir               common.ShouldDirBeIgnored
 	ignoreFileType          common.ShouldFileBeIgnored
@@ -34,7 +37,26 @@ func (a *BaseAnalyzer) Init() {
 	a.progressItemCount.Store(0)
 	a.progressTotalUsage.Store(0)
 	a.progressCurrentItemName.Store("")
+	a.currentDir.Store((*Dir)(nil))
+	a.cancelled.Store(false)
 	a.progressTicker = time.NewTicker(50 * time.Millisecond)
+}
+
+// setCurrentDir stores the root directory currently being analyzed so it can be
+// inspected (e.g. previewed) while the scan is still running.
+func (a *BaseAnalyzer) setCurrentDir(dir *Dir) {
+	a.currentDir.Store(dir)
+}
+
+// GetCurrentDir returns an independent snapshot of the directory tree built so
+// far, or nil if no analysis has started yet. Callers may aggregate or navigate
+// the snapshot without mutating the live scan state.
+func (a *BaseAnalyzer) GetCurrentDir() fs.Item {
+	dir, _ := a.currentDir.Load().(*Dir)
+	if dir == nil {
+		return nil
+	}
+	return snapshotDir(dir, nil)
 }
 
 // SetFollowSymlinks sets whether symlink to files should be followed
@@ -67,8 +89,27 @@ func (a *BaseAnalyzer) GetDone() common.SignalGroup {
 	return a.doneChan
 }
 
-// ResetProgress resets the analyzer state
+// Cancel stops scheduling new scan work. In-flight filesystem operations are
+// allowed to finish so the caller can safely use the partial directory tree.
+func (a *BaseAnalyzer) Cancel() {
+	a.cancelled.Store(true)
+}
+
+// IsCancelled reports whether the current scan has been cancelled.
+func (a *BaseAnalyzer) IsCancelled() bool {
+	return a.cancelled.Load()
+}
+
+func (a *BaseAnalyzer) shouldSkipDir(name, path string) bool {
+	return a.ignoreDir(name, path) || a.IsCancelled()
+}
+
+// ResetProgress prepares the analyzer for a new scan. Call it only after the
+// previous scan has completed and before exposing the new scan to cancellation.
 func (a *BaseAnalyzer) ResetProgress() {
+	if a.progressTicker != nil {
+		a.progressTicker.Stop()
+	}
 	a.Init()
 }
 

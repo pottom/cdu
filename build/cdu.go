@@ -10,4 +10,4 @@ package build
 //
 // It lives in its own file so build/build.go, which is upstream's and on the merge
 // conflict surface, is never edited.
-var GduVersion = "5.36.1"
+var GduVersion = "5.37.0"

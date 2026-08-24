@@ -2,12 +2,19 @@ package tui
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	"github.com/pottom/cdu/internal/testapp"
 	"github.com/pottom/cdu/pkg/analyze"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMain(m *testing.M) {
+	os.Unsetenv("BLOCK_SIZE")
+	os.Unsetenv("BLOCKSIZE")
+	os.Exit(m.Run())
+}
 
 func TestFormatSize(t *testing.T) {
 	simScreen := testapp.CreateSimScreen()
@@ -24,6 +31,15 @@ func TestFormatSize(t *testing.T) {
 	assert.Equal(t, "1.0[white:black:-] PiB", ui.formatSize(1<<50, false, false))
 	assert.Equal(t, "1.0[white:black:-] EiB", ui.formatSize(1<<60, false, false))
 	assert.Equal(t, "-1.0[white:black:-] KiB", ui.formatSize(-1<<10, false, false))
+}
+
+func TestFormatSizeWithBlockSizeEnvironment(t *testing.T) {
+	t.Setenv("BLOCK_SIZE", "1K")
+	simScreen := testapp.CreateSimScreen()
+	defer simScreen.Fini()
+
+	ui := CreateUI(testapp.CreateMockedApp(true), simScreen, &bytes.Buffer{}, false, false, false, false)
+	assert.Equal(t, "2[white:black:-]", ui.formatSize(1025, false, false))
 }
 
 func TestFormatSizeDec(t *testing.T) {
@@ -172,4 +188,51 @@ func TestOldSizeBar(t *testing.T) {
 	}
 
 	assert.Contains(t, ui.formatFileRow(file, dir.GetUsage(), dir.GetSize(), false, false), "[#####     ]   Aaa")
+}
+
+func TestSizeBarWithPercentage(t *testing.T) {
+	simScreen := testapp.CreateSimScreen()
+	defer simScreen.Fini()
+
+	app := testapp.CreateMockedApp(true)
+	ui := CreateUI(app, simScreen, &bytes.Buffer{}, false, false, false, false)
+	ui.SetShowBarPercentage()
+
+	dir := &analyze.Dir{
+		File: &analyze.File{
+			Usage: 10,
+		},
+	}
+
+	file := &analyze.File{
+		Name:   "Aaa",
+		Parent: dir,
+		Usage:  10,
+	}
+
+	assert.Contains(t, ui.formatFileRow(file, file.GetUsage(), file.GetSize(), false, false), "100.0% ██████████▏Aaa")
+}
+
+func TestSizeBarWithPercentagePartial(t *testing.T) {
+	simScreen := testapp.CreateSimScreen()
+	defer simScreen.Fini()
+
+	app := testapp.CreateMockedApp(true)
+	ui := CreateUI(app, simScreen, &bytes.Buffer{}, false, false, false, false)
+	ui.SetShowBarPercentage()
+	ui.useOldSizeBar = true
+
+	dir := &analyze.Dir{
+		File: &analyze.File{
+			Usage: 20,
+		},
+	}
+
+	file := &analyze.File{
+		Name:   "Aaa",
+		Parent: dir,
+		Usage:  10,
+	}
+
+	assert.Contains(t, ui.formatFileRow(file, dir.GetUsage(), dir.GetSize(), false, false), "50.0% [#####     ]")
 }

@@ -56,6 +56,10 @@ Show relative size
 
 Show number of items in directory
 
+#### `show-symlink-target`
+
+Show symlink target (`name -> target`) in the file list. Disabled by default.
+
 #### `no-color`
 
 Do not use colorized output
@@ -91,6 +95,10 @@ Do not allow deletions
 #### `no-view-file`
 
 Do not allow viewing file contents
+
+#### `no-confirm-quit`
+
+Do not ask for confirmation before quitting after a long scan. By default, pressing `q`/`Q` after a scan that took more than a few seconds shows a confirmation dialog so that results are not lost by an accidental key press.
 
 #### `follow-symlinks`
 
@@ -137,6 +145,19 @@ Delete items in parallel, which might increase the speed of deletion
 Allow navigating above the launch directory by pressing the left arrow key. When enabled, pressing left at the top-level directory will rescan and open its parent directory. Disabled by default.
 
 
+#### `web.listen`
+
+Address the web UI (`--web`) listens on, e.g. `localhost:8080`. When empty (the default), Gdu binds to `localhost` on a random free port. Binding to a non-loopback address exposes file names and sizes to other hosts on the network and prints a warning.
+
+#### `web.open-browser`
+
+Whether the web UI opens in the default browser on start. Enabled by default. The URL is always printed regardless of this setting. Can be overridden on the command line with `--web-open=false`.
+
+#### `web.browser`
+
+Override the command used to open the browser (the URL is appended as the final argument), e.g. `firefox --new-window`. When empty (the default), the operating system's default handler is used.
+
+
 #### `style.selected-row.text-color`
 
 Color of text for the selected row
@@ -144,6 +165,14 @@ Color of text for the selected row
 #### `style.selected-row.background-color`
 
 Background color for the selected row
+
+#### `style.marked.text-color`
+
+Color of text for marked items
+
+#### `style.marked.background-color`
+
+Background color for marked items
 
 #### `style.progress-modal.current-item-path-max-len`
 
@@ -153,6 +182,10 @@ When the length is reached, the path is shortened with "/.../".
 #### `style.use-old-size-bar`
 
 Show size bar without Unicode symbols.
+
+#### `style.show-bar-percentage`
+
+Show the numeric usage percentage (e.g. `61.4%`) next to the size bar in the directory listing.
 
 #### `style.footer.text-color`
 
