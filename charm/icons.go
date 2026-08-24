@@ -24,12 +24,12 @@ const (
 	// iconFolder and iconFile are the fallbacks: exa's own, for anything the
 	// tables do not name.
 	iconFolder = "\uf07b" // nf-fa-folder, the solid closed folder (matches harmos)
-	iconFile   = ""
+	iconFile   = "\uf15b"
 
 	// Directories worth telling apart at a glance. A .git is not a folder you
 	// meant to fill up, and bin is not one you meant to keep.
-	iconGit = ""
-	iconBin = ""
+	iconGit = "\uf1d3"
+	iconBin = "\ue5fc"
 )
 
 // markerDir and markerFile are what the icon cell holds without --icons: the
@@ -52,9 +52,9 @@ const (
 // reason the cursor row carries a marker as well as a colour.
 const (
 	iconDisk   = "\U000f02ca" // nf-md-harddisk
-	iconVolume = ""          // nf-fae-database
+	iconVolume = "\ue64c"     // nf-fae-database
 	// A mount with no disk behind it: tmpfs, devfs, an automount map.
-	iconPseudo = "" // nf-fa-cubes
+	iconPseudo = "\uf1b3" // nf-fa-cubes
 
 	markerDisk        = "■"
 	markerVolume      = "▸"
