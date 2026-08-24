@@ -27,9 +27,11 @@ const (
 	minWidthForItemCount = 72
 	minWidthForMtime     = 92
 
-	// The row is: gutter(1) + icon + size + gap(1) + name + pct. barIndent is
-	// everything left of the name, minus the icon, which is not always drawn.
-	barIndent = 1 + sizeColWidth + 1
+	// The row is: gutter(1) + icon + name + gap(1) + extras + size + pct. The name
+	// sits right after the icon; the figures (size, then percentage) are grouped at
+	// the right edge. barIndent is everything left of the name — just the gutter,
+	// plus the icon, which is added in viewBar because it is not always drawn.
+	barIndent = 1
 
 	// Below these widths the layout sheds its least essential column rather
 	// than wrapping or smearing. The bar goes first: it is decoration for the
@@ -586,15 +588,15 @@ func (m *model) viewParentRow(selected bool) string {
 		}
 	}
 	iconW := runewidth.StringWidth(icon)
-	// The size column is kept as blank space, not a dash, so "../" still lines up
-	// under the sibling names — the alignment is worth more than the dash was.
-	sizeBlank := spaces(sizeColWidth)
-
-	const fixedCells = 2 // gutter + the gap between the size column and the name
-	rightWidth := max(m.width-iconW-sizeColWidth-fixedCells, minNameWidth)
+	// The name leads, right after the icon, exactly as the sibling rows do — so "../"
+	// lines up under their names with no size column to reserve. There is no size or
+	// percentage for a parent, so the name fills the rest of the row; its right
+	// padding stands in for the blank figure columns.
+	const gutter = 1
+	rightWidth := max(m.width-iconW-gutter, minNameWidth)
 
 	nameLabel := runewidth.FillRight(runewidth.Truncate(m.parentNameLabel(rightWidth), rightWidth, "…"), rightWidth)
-	plain := icon + sizeBlank + " " + nameLabel
+	plain := icon + nameLabel
 
 	if selected {
 		marker := m.st.accent.Render("▌")
@@ -604,7 +606,6 @@ func (m *model) viewParentRow(selected bool) string {
 		return marker + m.st.selected.Render(plain)
 	}
 	return " " + m.st.accent.Render(icon) +
-		m.st.dim.Render(sizeBlank) + " " +
 		m.styleParentNameLabel(rightWidth)
 }
 
@@ -638,9 +639,9 @@ func (m *model) viewParentBar(selected bool) string {
 	return gutter + strings.Repeat(" ", max(m.width-1, 0))
 }
 
-// viewBar draws the gradient bar under an entry, aligned with the name column —
-// the mock spans it across the name and percentage cells rather than the whole
-// row, so it reads as belonging to the name rather than to the icon.
+// viewBar draws the gradient bar under an entry, starting under the name — which
+// now leads the row, right after the icon — and running toward the right edge, so
+// it reads as belonging to the name rather than to the gutter.
 func (m *model) viewBar(item fs.Item, selected bool, total int64) string {
 	indent := barIndent
 	if m.width >= minWidthForIcon {
@@ -709,10 +710,12 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	// does not appear — and toggleLabel says the state changed regardless.
 	extras := m.extraColumns(item)
 
-	// The row is: gutter(1) + icon + size + gap(1) + extras + name + pct. The gutter
-	// holds either the selection marker or a blank, so both variants are the same
-	// width.
-	const fixedCells = 2 // gutter + the gap between size and name
+	// The row is: gutter(1) + icon + name + gap(1) + extras + size + pct. The name
+	// leads, right after the icon; the figures are grouped at the right edge. The
+	// gutter holds either the selection marker or a blank, so both variants are the
+	// same width. Moving size from the left to the right does not change this sum —
+	// the same columns are reserved, so the name column math is untouched.
+	const fixedCells = 2 // gutter + the gap between the name and the figures
 	rawNameWidth := m.width - runewidth.StringWidth(icon) - sizeColWidth -
 		runewidth.StringWidth(extras) - runewidth.StringWidth(pctText) - fixedCells
 	nameWidth := max(rawNameWidth, minNameWidth)
@@ -752,10 +755,14 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	}
 	nameText := runewidth.FillRight(runewidth.Truncate(name, nameWidth, "…"), nameWidth)
 
-	plain := icon + sizeText + " " + extras + nameText + pctText
+	// The name comes first, then a gap, then the right-hand figures (extras, size,
+	// percentage). The gap is a real space on top of the name's own right padding,
+	// so a full-width name still keeps one column clear of the numbers.
+	figures := " " + extras + sizeText
+	plain := icon + nameText + figures + pctText
 
 	if selected {
-		return m.viewSelectedRow(plain, icon, sizeText+" "+extras, nameText, pctText, floored, m.markOverlay(item))
+		return m.viewSelectedRow(plain, icon, nameText, figures, pctText, floored, m.markOverlay(item))
 	}
 
 	// Floored: the terminal is narrower than the columns' own minimums add up to,
@@ -801,9 +808,9 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 	}
 
 	return " " + iconStyle.Render(icon) +
-		m.st.size.Render(sizeText) + " " +
+		renderedName + " " +
 		m.st.dim.Render(extras) +
-		renderedName +
+		m.st.size.Render(sizeText) +
 		m.st.pct.Render(pctText)
 }
 
@@ -815,7 +822,7 @@ func (m *model) viewRow(item fs.Item, selected bool, total int64) string {
 // that all carry the selection background so the row stays one block. When the
 // name column has been floored the row no longer adds up to the exact width, so it
 // is clipped whole rather than composed.
-func (m *model) viewSelectedRow(plain, icon, prefix, nameText, pctText string, floored, marked bool) string {
+func (m *model) viewSelectedRow(plain, icon, nameText, figures, pctText string, floored, marked bool) string {
 	if m.width < 1 {
 		return ""
 	}
@@ -853,12 +860,14 @@ func (m *model) viewSelectedRow(plain, icon, prefix, nameText, pctText string, f
 	}
 	// The icon is composed on its own so a marked cursor row can take the danger
 	// colour on it too, matching the plain marked rows; otherwise it keeps the
-	// selection foreground like the rest of the prefix.
+	// selection foreground like the rest of the name.
 	iconRender := sel.Render(icon)
 	if marked {
 		iconRender = m.markedIconStyle(&sel).Render(icon)
 	}
-	return marker + iconRender + sel.Render(prefix) + name + sel.Render(pctText)
+	// Order follows the plain row: icon, name, then the figures (gap + extras + size)
+	// and the percentage flush right.
+	return marker + iconRender + name + sel.Render(figures) + sel.Render(pctText)
 }
 
 // extraColumns renders the optional item-count and mtime columns, in that order,
