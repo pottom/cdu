@@ -23,7 +23,7 @@ import (
 const (
 	// iconFolder and iconFile are the fallbacks: exa's own, for anything the
 	// tables do not name.
-	iconFolder = ""
+	iconFolder = "\uf07b" // nf-fa-folder, the solid closed folder (matches harmos)
 	iconFile   = ""
 
 	// Directories worth telling apart at a glance. A .git is not a folder you
