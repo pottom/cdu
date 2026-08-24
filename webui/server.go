@@ -26,7 +26,7 @@ func (ui *UI) StartUILoop() error {
 	}
 
 	url := "http://" + listener.Addr().String()
-	fmt.Fprintf(ui.output, "Gdu web UI running at %s\n", url)
+	fmt.Fprintf(ui.output, "cdu web UI running at %s\n", url)
 	warnIfRemote(ui.output, listener.Addr())
 
 	if ui.openBrowser {

@@ -119,7 +119,7 @@ export function App() {
     <div className="app">
       <header className="app-header">
         <div className="app-title">
-          <span className="logo">gdu</span>
+          <span className="logo">cdu</span>
           {nodeResp && (
             <Breadcrumbs breadcrumbs={nodeResp.breadcrumbs} onNavigate={handleNavigate} />
           )}
