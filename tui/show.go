@@ -30,12 +30,13 @@ var (
                [::b]c     [white:black:-]Show/hide file count
                [::b]m     [white:black:-]Show/hide latest mtime
                [::b]b     [white:black:-]Spawn shell in current directory
-               [::b]q     [white:black:-]Quit gdu
+               [::b]q     [white:black:-]Quit gdu (asks to confirm after a long scan)
                [::b]Q     [white:black:-]Quit gdu and print current directory path
 
 Item under cursor:
                [::b]d     [white:black:-]Delete file or directory
                [::b]e     [white:black:-]Empty file or directory
+               [::b]D     [white:black:-]Move file or directory to trash
 			   [::b]space [white:black:-]Mark file or directory for deletion
 			   [::b]p     [white:black:-]Print marked items paths to stdout after quitting
 			   [::b]I     [white:black:-]Ignore file or directory
@@ -49,6 +50,20 @@ Sort by (twice toggles asc/desc):
                [::b]C     [white:black:-]Sort by file count (asc/desc)
                [::b]M     [white:black:-]Sort by mtime (asc/desc)`
 )
+
+// currentDirLabelText builds the breadcrumb label shown above the table,
+// annotated when a mid-scan preview is being displayed.
+func (ui *UI) currentDirLabelText() string {
+	label := "[::b] --- " +
+		tview.Escape(
+			strings.TrimPrefix(ui.currentDirPath, build.RootPathPrefix),
+		) +
+		" ---"
+	if ui.previewing {
+		label += "  [::b][yellow]scanning… (preview, Tab to resume)[-]"
+	}
+	return label
+}
 
 // nolint: funlen // Why: complex function
 func (ui *UI) showDir() {
@@ -70,11 +85,7 @@ func (ui *UI) showDir() {
 		log.Printf("changing cwd to %s", ui.currentDirPath)
 	}
 
-	ui.currentDirLabel.SetText("[::b] --- " +
-		tview.Escape(
-			strings.TrimPrefix(ui.currentDirPath, build.RootPathPrefix),
-		) +
-		" ---").SetDynamicColors(true)
+	ui.currentDirLabel.SetText(ui.currentDirLabelText()).SetDynamicColors(true)
 
 	ui.table.Clear()
 
@@ -182,8 +193,8 @@ func (ui *UI) showDir() {
 		case ignored:
 			cell.SetStyle(tcell.Style{}.Foreground(tview.Styles.SecondaryTextColor))
 		case marked:
-			cell.SetStyle(tcell.Style{}.Foreground(tview.Styles.PrimaryTextColor))
-			cell.SetBackgroundColor(tview.Styles.ContrastBackgroundColor)
+			cell.SetStyle(tcell.Style{}.Foreground(ui.markedTextColor))
+			cell.SetBackgroundColor(ui.markedBackgroundColor)
 		default:
 			cell.SetStyle(tcell.Style{}.Foreground(tcell.ColorDefault))
 		}
@@ -379,7 +390,8 @@ func (ui *UI) formatHelpTextFor() string {
 		}
 
 		isFound := (strings.Contains(line, "Empty file or directory") ||
-			strings.Contains(line, "Delete file or directory"))
+			strings.Contains(line, "Delete file or directory") ||
+			strings.Contains(line, "Move file or directory to trash"))
 
 		if ui.noDelete && isFound {
 			lines[i] += helpDisabledSuffix

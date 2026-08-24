@@ -53,9 +53,22 @@ func TestSimpleDirUpdateStats(t *testing.T) {
 
 	d.UpdateStats(make(fs.HardLinkedItems))
 
-	assert.Equal(t, int64(100+50+300+4096), d.Size)
-	assert.Equal(t, int64(200+80+400+4096), d.Usage)
+	assert.Equal(t, int64(100+50+300), d.Size)
+	assert.Equal(t, int64(200+80+400), d.Usage)
 	assert.Equal(t, int64(1+1+5+1), d.ItemCount)
+}
+
+func TestEmptySimpleDirUpdateStats(t *testing.T) {
+	d := &SimpleDir{
+		SimpleFile: SimpleFile{Name: "root", IsDir: true},
+		Files:      []SimpleFile{},
+	}
+
+	d.UpdateStats(make(fs.HardLinkedItems))
+
+	assert.Equal(t, int64(512), d.Size)
+	assert.Equal(t, int64(0), d.Usage)
+	assert.Equal(t, int64(0), d.ItemCount)
 }
 
 func TestSimpleDirUpdateStatsErrorFlag(t *testing.T) {
@@ -120,7 +133,12 @@ func TestSimpleDirGetFilesDirVsFile(t *testing.T) {
 			{Name: "afile", Size: 10, Usage: 10, IsDir: false},
 			{Name: "adir", Size: 100, Usage: 100, IsDir: true, ItemCount: 5},
 		},
+		BasePath: ".",
 	}
+
+	assert.True(t, d.IsDir())
+	assert.Equal(t, "root", d.GetName())
+	assert.Equal(t, "./root", d.GetPath())
 
 	var items []fs.Item
 	for item := range d.GetFiles(fs.SortBySize, fs.SortAsc) {
@@ -140,17 +158,15 @@ func TestSimpleDirGetFilesDirVsFile(t *testing.T) {
 func TestSimpleDirPanics(t *testing.T) {
 	d := &SimpleDir{}
 
-	assert.Panics(t, func() { d.GetPath() })
 	assert.Panics(t, func() { d.GetFlag() })
-	assert.Panics(t, func() { d.IsDir() })
 	assert.Panics(t, func() { d.GetType() })
 	assert.Panics(t, func() { d.GetMtime() })
 	assert.Panics(t, func() { d.GetItemCount() })
 	assert.Panics(t, func() { d.GetParent() })
 	assert.Panics(t, func() { d.SetParent(nil) })
 	assert.Panics(t, func() { d.GetMultiLinkedInode() })
-	assert.Panics(t, func() { d.EncodeJSON(nil, false) })
-	assert.Panics(t, func() { d.GetItemStats(nil) })
+	assert.Panics(t, func() { d.EncodeJSON(nil, false, nil) })
+	assert.Panics(t, func() { d.GetItemStats(nil, false) })
 	assert.Panics(t, func() { d.AddFile(nil) })
 	assert.Panics(t, func() {
 		d.GetFilesLocked(fs.SortBySize, fs.SortAsc)

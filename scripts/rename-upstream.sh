@@ -44,6 +44,26 @@ fi
 [ -f gdu.1.md ] && git mv gdu.1.md cdu.1.md
 [ -f gdu.1 ] && git mv gdu.1 cdu.1
 
+# 4. Web UI branding. webui/ is upstream's, so cdu does not hand-edit it; the
+#    rename step rewrites the few user-facing "Gdu"/"gdu" strings so the served
+#    page title, its header logo, and the startup line read "cdu". Scope is the
+#    visible name only — comments that accurately call the upstream project gdu
+#    are left alone, exactly like rootCmd.Long's "fork of gdu". Each substitution
+#    is string-specific, so re-running on an already-renamed tree is a no-op.
+[ -f webui/server.go ] &&
+	perl -pi -e 's/\QGdu web UI running at\E/cdu web UI running at/g' webui/server.go
+for html in webui/dist/index.html webui/frontend/index.html; do
+	[ -f "$html" ] && perl -pi -e 's|<title>Gdu</title>|<title>cdu</title>|g' "$html"
+done
+[ -f webui/frontend/src/App.tsx ] &&
+	perl -pi -e 's|(className="logo">)gdu(</span>)|${1}cdu${2}|g' webui/frontend/src/App.tsx
+# The dist bundle is a built artifact; only its one logo string literal is
+# patched. The hash in the filename is cache-busting, not integrity, so editing
+# the contents while keeping the name still serves correctly.
+for js in webui/dist/assets/index-*.js; do
+	[ -f "$js" ] && perl -pi -e 's/children:`gdu`/children:`cdu`/g' "$js"
+done
+
 gofmt -l -w ./cmd ./pkg ./internal ./tui ./stdout ./report ./build >/dev/null
 
 echo "renamed ${OLD_MODULE} -> ${NEW_MODULE}"
